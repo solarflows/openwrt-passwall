@@ -19,6 +19,43 @@ local UrlEncode, UrlDecode = api.UrlEncode, api.UrlDecode
 local fs = api.fs
 local uci, uci_get, uci_set, uci_del, uci_foreach, uci_save = api.uci, api.uci_get_c, api.uci_set_c, api.uci_del_c, api.uci_foreach_c, api.uci_save_c
 
+if uci_get("@global_forwarding[0]", "fork_optimize") == "1" then
+	local native_uci = require("uci").cursor()
+	uci = native_uci
+	local mt = getmetatable(native_uci)
+	mt.section = function(self, config, stype, name, values)
+		local sid = name or api.gen_random_char()
+		self:set(config, sid, stype)
+		if values then
+			for k, v in pairs(values) do self:set(config, sid, k, v) end
+		end
+		return sid
+	end
+	uci_get = function(section, option)
+		if not section then return uci:get_all(c_config)
+		elseif option then return uci:get(c_config, section, option)
+		else return uci:get_all(c_config, section) end
+	end
+	uci_set = function(section, option, value)
+		if type(value) == "number" then value = tostring(value) end
+		if value and #value > 0 then
+			if option then return uci:set(c_config, section, option, value)
+			else return uci:set(c_config, section, value) end
+		else
+			if option then return uci:delete(c_config, section, option)
+			else return uci:delete(c_config, section) end
+		end
+	end
+	uci_del = function(section, option)
+		if option then return uci:delete(c_config, section, option)
+		else return uci:delete(c_config, section) end
+	end
+	uci_foreach = function(stype, func) return uci:foreach(c_config, stype, func) end
+	uci_save = function(commit)
+		if commit then uci:commit(c_config) else uci:save(c_config) end
+	end
+end
+
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
 local tinsert = table.insert
