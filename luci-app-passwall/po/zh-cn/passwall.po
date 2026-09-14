@@ -2153,3 +2153,9 @@ msgstr "配置支持的密码套件列表，以冒号 (:) 分隔。"
 
 msgid "Connection Reuse"
 msgstr "连接复用"
+
+msgid "NFTables Rules Optimization"
+msgstr "NFTables 规则优化"
+
+msgid "Optimize nftables rule order, short-circuit return, clean chain teardown, and rp_filter for performance."
+msgstr "优化 nftables 规则顺序、短路放行、防卡死卸载机制及 rp_filter 反向过滤参数以提升性能与稳定性。"
