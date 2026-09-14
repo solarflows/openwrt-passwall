@@ -117,6 +117,16 @@ o.default = "1"
 o:value("0", "Iptables")
 o:value("1", "Nftables")
 
+---- NFTables Optimization Toggle
+o = s:option(Flag, "nft_optimize", translate("NFTables Rules Optimization"),
+	translate("Optimize nftables rule order, short-circuit return, clean chain teardown, and rp_filter for performance."))
+o.default = 0
+o.rmempty = false
+o:depends("prefer_nft", "1")
+o.remove = function(self, section)
+	-- 禁止在隐藏时删除
+end
+
 ---- Check the transparent proxy component
 local handle = io.popen("lsmod")
 local mods = handle and handle:read("*a") or ""
