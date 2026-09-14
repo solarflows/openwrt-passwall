@@ -2189,3 +2189,9 @@ msgstr "自定义 HTTP 请求头"
 
 msgid "MASQUE Address"
 msgstr "MASQUE 隧道地址"
+
+msgid "Fork Performance Toolkit"
+msgstr "Fork 性能优化套件"
+
+msgid "Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."
+msgstr "启用 Fork 专属优化脚本：包含出站规则链置顶、毫秒级增量节点过滤、原生 C 库订阅极速解析 (提速 750 倍) 及转发参数调优。"
