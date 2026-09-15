@@ -193,6 +193,8 @@ start() {
 	LOCK_FILE=${LOCK_PATH}/${CONFIG}_socks_auto_switch_${id}.lock
 	exec 9>"$LOCK_FILE"
 	flock -n 9 || return 0
+	LOG_EVENT_FILTER=$(uci -q get "${CONFIG}.global[0].log_event_filter" 2>/dev/null)
+	LOG_EVENT_CMD=$(uci -q get "${CONFIG}.global[0].log_event_cmd" 2>/dev/null)
 	main_node=$(config_n_get $id node)
 	socks_port=$(config_n_get $id port 0)
 	delay=$(config_n_get $id autoswitch_testing_time 30)
