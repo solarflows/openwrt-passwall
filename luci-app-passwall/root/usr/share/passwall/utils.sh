@@ -469,7 +469,25 @@ ln_run() {
 		return 1
 	}
 
-	${file_func:-echolog " - ${ln_name}"} "$@" >${output} 2>&1 &
+	[ "${output}" != "/dev/null" ] && [ -n "$(echo "${output}" | grep -E "default|socks_")" ] && [ "${ln_name}" != "chinadns-ng" ] && {
+		local persist_log_path=$(config_n_get @global[0] persist_log_path)
+		local sys_log=$(config_n_get @global[0] sys_log "0")
+	}
+	if [ -z "$persist_log_path" ] && [ "$sys_log" != "1" ]; then
+		${file_func:-echolog " - ${ln_name}"} "$@" >${output} 2>&1 &
+	else
+		if [ -n "${persist_log_path}" ]; then
+			mkdir -p ${persist_log_path}
+			local log_file=${persist_log_path}/passwall_global_${ln_name}_$(date '+%F').log
+			echolog "记录到持久性日志文件：${log_file}"
+			${file_func:-echolog " - ${ln_name}"} "$@" >> ${log_file} 2>&1 &
+			sys_log=0
+		fi
+		if [ "${sys_log}" = "1" ]; then
+			echolog "记录 ${ln_name}_global 到系统日志"
+			${file_func:-echolog " - ${ln_name}"} "$@" 2>&1 | logger -t PASSWALL_global_${ln_name} &
+		fi
+	fi
 
 	[ "$NO_REC_PROCESS" = "1" ] && return
 	process_count=$(ls $TMP_SCRIPT_FUNC_PATH | wc -l)
