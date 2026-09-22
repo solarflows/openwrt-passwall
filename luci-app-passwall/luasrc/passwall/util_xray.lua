@@ -2074,16 +2074,29 @@ function gen_config(var)
 		else
 			table.insert(outbounds, blackhole_outbound)
 		end
+		local fork_optimize = (api.uci_get_c("@global_forwarding[0]", "fork_optimize") == "1")
+		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			local pt = value.protocol
 			local exclude = { blackhole=1, dns=1, freedom=1, loopback=1 }
 			if not value["_flag_proxy_tag"] and value["_id"] and pt and not exclude[pt] and not NO_RUN then
-				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				if fork_optimize then
+					direct_node_ids[#direct_node_ids + 1] = value["_id"]
+				else
+					sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				end
 			end
 			for k, v in pairs(config.outbounds[index]) do
 				if k:find("_") == 1 then
 					config.outbounds[index][k] = nil
 				end
+			end
+		end
+		if fork_optimize and direct_node_ids and #direct_node_ids > 0 then
+			local f = io.open(api.TMP_PATH .. "/direct_node_list", "a")
+			if f then
+				f:write(table.concat(direct_node_ids, "\n") .. "\n")
+				f:close()
 			end
 		end
 		return jsonc.stringify(config, 1)
