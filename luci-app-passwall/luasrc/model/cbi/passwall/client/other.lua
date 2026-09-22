@@ -120,7 +120,7 @@ o:value("1", "Nftables")
 ---- Fork Performance Toolkit Toggle
 o = s:option(Flag, "fork_optimize", translate("Fork Performance Toolkit"),
 	translate("Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."))
-o.default = 0
+o.default = 1
 o.rmempty = false
 o:depends("prefer_nft", "1")
 o.remove = function(self, section)
