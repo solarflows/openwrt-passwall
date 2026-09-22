@@ -2340,9 +2340,15 @@ function gen_config(var)
 			tag = "direct",
 			routing_mark = 255,
 		})
+		local fork_optimize = (api.uci_get_c("@global_forwarding[0]", "fork_optimize") == "1")
+		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and (value.server_port or value.server_ports) and not NO_RUN then
-				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				if fork_optimize then
+					direct_node_ids[#direct_node_ids + 1] = value["_id"]
+				else
+					sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				end
 			end
 			if not value.detour and not value.bind_interface and value.server then
 				value.detour = "direct"
@@ -2354,6 +2360,13 @@ function gen_config(var)
 				if k:find("_") == 1 then
 					config.outbounds[index][k] = nil
 				end
+			end
+		end
+		if fork_optimize and direct_node_ids and #direct_node_ids > 0 then
+			local f = io.open(api.TMP_PATH .. "/direct_node_list", "a")
+			if f then
+				f:write(table.concat(direct_node_ids, "\n") .. "\n")
+				f:close()
 			end
 		end
 		if true then
