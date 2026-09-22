@@ -35,6 +35,13 @@ end
 local ungrouped = {}
 local groups = {}
 local group_order = {}
+local new_groups = {}
+local map_emitted = self.map and self.map._passwall_emitted_groups
+if not map_emitted then
+	map_emitted = {}
+	if self.map then self.map._passwall_emitted_groups = map_emitted end
+end
+
 for _, item in ipairs(values) do
 	if not item.group or item.group == "" then
 		table.insert(ungrouped, item)
@@ -45,6 +52,14 @@ for _, item in ipairs(values) do
 			table.insert(group_order, g)
 		end
 		table.insert(groups[g], item)
+	end
+end
+
+-- 收集尚未在前端全局池 window.lv_groups_pool 中注册的组
+for _, g in ipairs(group_order) do
+	if not map_emitted[g] then
+		map_emitted[g] = true
+		new_groups[g] = groups[g]
 	end
 end
 
@@ -73,17 +88,20 @@ local function find_label_by_key(k)
 end
 local current_label = find_label_by_key(current_key) or ""
 
--- 打包数据给 JS
+-- 打包数据给 JS（通过全局池去重，不再重复打包庞大的 groups 数据）
 local dropdown_data = {
 	current_key = current_key,
 	current_label = current_label,
 	ungrouped = ungrouped,
-	groups = groups,
 	group_order = group_order,
 	cbid = cbid,
 }
 %>
 <script>
+window.lv_groups_pool = window.lv_groups_pool || {};
+<% if next(new_groups) then %>
+Object.assign(window.lv_groups_pool, <%=json.stringify(new_groups)%>);
+<% end %>
 window.lv_dropdown_data = window.lv_dropdown_data || {};
 window.lv_dropdown_data["<%=cbid%>"] = <%=json.stringify(dropdown_data)%>;
 </script>

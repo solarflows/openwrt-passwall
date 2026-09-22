@@ -128,6 +128,7 @@ if (has_singbox or has_xray) and #nodes_table > 0 then
 				verify_option = s.fields["node"],
 				tab = "Shunt",
 				tab_desc = translate("Shunt Rule"),
+				node_list = api.get_node_list(nodes_table),
 			})
 		end
 	else
