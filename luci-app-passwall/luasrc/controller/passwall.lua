@@ -675,6 +675,7 @@ function get_node()
 	local id = http.formvalue("id")
 	local result = {}
 	local show_node_info = uci_get("@global_other[0]", "show_node_info") or "0"
+	local fork_optimize = (uci_get("@global_forwarding[0]", "fork_optimize") == "1")
 
 	local function add_is_ipv6_key(o)
 		if o and o.address and show_node_info == "1" then
@@ -692,14 +693,26 @@ function get_node()
 	else
 		local default_nodes = {}
 		local other_nodes = {}
-		uci_foreach("nodes", function(t)
-			add_is_ipv6_key(t)
-			if not t.group or t.group == "" then
-				default_nodes[#default_nodes + 1] = t
-			else
-				other_nodes[#other_nodes + 1] = t
-			end
-		end)
+		if fork_optimize then
+			local native_uci = require("uci").cursor()
+			native_uci:foreach("passwall", "nodes", function(t)
+				add_is_ipv6_key(t)
+				if not t.group or t.group == "" then
+					default_nodes[#default_nodes + 1] = t
+				else
+					other_nodes[#other_nodes + 1] = t
+				end
+			end)
+		else
+			uci_foreach("nodes", function(t)
+				add_is_ipv6_key(t)
+				if not t.group or t.group == "" then
+					default_nodes[#default_nodes + 1] = t
+				else
+					other_nodes[#other_nodes + 1] = t
+				end
+			end)
+		end
 		for i = 1, #default_nodes do result[#result + 1] = default_nodes[i] end
 		for i = 1, #other_nodes do result[#result + 1] = other_nodes[i] end
 	end
