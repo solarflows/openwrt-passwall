@@ -35,8 +35,18 @@ function log(...)
 	end
 end
 
+local _is_old_uci_cache = nil
 function is_old_uci()
-	return sys.call("grep -E 'require[ \t]*\"uci\"' /usr/lib/lua/luci/model/uci.lua >/dev/null 2>&1") == 0
+	if _is_old_uci_cache ~= nil then return _is_old_uci_cache end
+	local f = io.open("/usr/lib/lua/luci/model/uci.lua", "r")
+	if f then
+		local content = f:read("*a")
+		f:close()
+		_is_old_uci_cache = (content:find('require%s+"uci"') ~= nil)
+	else
+		_is_old_uci_cache = false
+	end
+	return _is_old_uci_cache
 end
 
 function uci_del(config, section, option)
@@ -779,18 +789,42 @@ function get_customed_path(e)
 	return uci_get_c("@global_app[0]", e .. "_file")
 end
 
+local _finded_cache = {}
 function finded_com(e)
-	local bin = get_app_path(e)
-	if not bin then return end
-	local s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
-	if s == "" then
-		s = nil
+	if _finded_cache["com_" .. e] ~= nil then
+		return _finded_cache["com_" .. e]
 	end
+	local bin = get_app_path(e)
+	local s = nil
+	if bin and bin ~= "" then
+		if fs.access(bin, "rwx", "rx", "rx") or fs.access(bin) then
+			s = bin
+		else
+			s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
+			if s == "" then s = nil end
+		end
+	end
+	_finded_cache["com_" .. e] = s
 	return s
 end
 
 function finded(e)
-	return luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	if _finded_cache["bin_" .. e] ~= nil then
+		return _finded_cache["bin_" .. e]
+	end
+	local s = ""
+	for _, prefix in ipairs({"/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/"}) do
+		local p = prefix .. e
+		if fs.access(p, "rwx", "rx", "rx") or fs.access(p) then
+			s = p
+			break
+		end
+	end
+	if s == "" then
+		s = luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	end
+	_finded_cache["bin_" .. e] = s
+	return s
 end
 
 function is_finded(e)
@@ -815,18 +849,28 @@ function clone(org)
 end
 
 function get_bin_version_cache(file, cmd)
-	sys.call("mkdir -p " .. CACHE_PATH)
+	if not fs.access(CACHE_PATH) then
+		fs.mkdir(CACHE_PATH)
+	end
 	if fs.access(file) then
 		chmod_755(file)
-		local md5 = sys.exec("echo -n $(md5sum " .. file .. " | awk '{print $1}')")
-		if fs.access(CACHE_PATH .. "/" .. md5) then
-			return sys.exec("echo -n $(cat %s)" % { CACHE_PATH .. "/" .. md5 })
-		else
-			local version = sys.exec(string.format("echo -n $(%s %s)", file, cmd))
-			if version and version ~= "" then
-				sys.call("echo '%s' > %s"  % { version, CACHE_PATH .. "/" .. md5})
-				return version
+		local stat = fs.stat(file)
+		local cache_key = stat and (file:gsub("[^%w]", "_") .. "_" .. (stat.mtime or 0) .. "_" .. (stat.size or 0)) or nil
+		if cache_key and fs.access(CACHE_PATH .. "/" .. cache_key) then
+			local f = io.open(CACHE_PATH .. "/" .. cache_key, "r")
+			if f then
+				local v = f:read("*l") or f:read("*a")
+				f:close()
+				if v and v ~= "" then return trim(v) end
 			end
+		end
+		local version = sys.exec(string.format("echo -n $(%s %s)", file, cmd))
+		if version and version ~= "" then
+			if cache_key then
+				local f = io.open(CACHE_PATH .. "/" .. cache_key, "w")
+				if f then f:write(version); f:close() end
+			end
+			return version
 		end
 	end
 	return ""
@@ -848,18 +892,14 @@ end
 
 local function is_file(path)
 	if path and #path > 1 then
-		if sys.exec('[ -f "%s" ] && echo -n 1' % path) == "1" then
-			return true
-		end
+		return fs.access(path) and fs.stat(path, "type") == "reg"
 	end
 	return nil
 end
 
 local function is_dir(path)
 	if path and #path > 1 then
-		if sys.exec('[ -d "%s" ] && echo -n 1' % path) == "1" then
-			return true
-		end
+		return fs.access(path) and fs.stat(path, "type") == "dir"
 	end
 	return nil
 end
@@ -1444,7 +1484,7 @@ function to_check_self()
 end
 
 function is_js_luci()
-	return sys.call('[ -f "/www/luci-static/resources/uci.js" ]') == 0
+	return fs.access("/www/luci-static/resources/uci.js") == true
 end
 
 function set_default_cbi()
