@@ -52,7 +52,7 @@ FAKE_IP_6="fc00::/18"
 USE_GEOVIEW=0
 EXCLUDE_VPSIP="^(0\.0\.0\.0|127\.0\.0\.1|1\.1\.1\.1|1\.1\.1\.2|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9)$"
 [ -z "$(command -v config_n_get)" ] && . "$UTILS_PATH"
-FORK_OPTIMIZE=$(config_n_get @global_forwarding[0] fork_optimize 0)
+FORK_OPTIMIZE=$(config_n_get @global_forwarding[0] fork_optimize 1)
 
 factor() {
 	local ports="$1"

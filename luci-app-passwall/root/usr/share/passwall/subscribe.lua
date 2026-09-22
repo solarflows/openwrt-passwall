@@ -19,7 +19,7 @@ local UrlEncode, UrlDecode = api.UrlEncode, api.UrlDecode
 local fs = api.fs
 local uci, uci_get, uci_set, uci_del, uci_foreach, uci_save = api.uci, api.uci_get_c, api.uci_set_c, api.uci_del_c, api.uci_foreach_c, api.uci_save_c
 
-if uci_get("@global_forwarding[0]", "fork_optimize") == "1" then
+if (uci_get("@global_forwarding[0]", "fork_optimize") or "1") == "1" then
 	local native_uci = require("uci").cursor()
 	uci = native_uci
 	local mt = getmetatable(native_uci)

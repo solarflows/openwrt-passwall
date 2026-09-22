@@ -675,7 +675,7 @@ function get_node()
 	local id = http.formvalue("id")
 	local result = {}
 	local show_node_info = uci_get("@global_other[0]", "show_node_info") or "0"
-	local fork_optimize = (uci_get("@global_forwarding[0]", "fork_optimize") == "1")
+	local fork_optimize = ((uci_get("@global_forwarding[0]", "fork_optimize") or "1") == "1")
 
 	local function add_is_ipv6_key(o)
 		if o and o.address and show_node_info == "1" then
