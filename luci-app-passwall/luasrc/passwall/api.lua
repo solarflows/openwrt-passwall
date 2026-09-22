@@ -640,7 +640,7 @@ function get_valid_nodes()
 	return nodes
 end
 
-function get_node_list()
+function get_node_list(nodes_table)
 	local node_list = {
 		socks_list = {},
 		normal_list = {},
@@ -654,7 +654,7 @@ function get_node_list()
 			}
 		end
 	end)
-	for k, e in ipairs(get_valid_nodes()) do
+	for k, e in ipairs(nodes_table or get_valid_nodes()) do
 		if e.node_type == "normal" then
 			node_list.normal_list[#node_list.normal_list + 1] = {
 				id = e[".name"],
