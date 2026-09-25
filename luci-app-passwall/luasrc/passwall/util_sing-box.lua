@@ -1196,6 +1196,9 @@ function gen_config(var)
 	local outbounds = {}
 	local rule_set_table = {}
 	local COMMON = {}
+	local fork_optimize = ((api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+	local ut_outbound_tags = {}
+	local urltest_outbounds = {}
 
 	local singbox_settings = api.uci_get_c("@global_singbox[0]") or {}
 
@@ -1369,8 +1372,12 @@ function gen_config(var)
 			local urltest_id = _node[".name"]
 			local urltest_tag = "urltest-" .. urltest_id
 			-- existing urltest
+			if fork_optimize and urltest_outbounds[urltest_tag] then
+				return urltest_outbounds[urltest_tag], true
+			end
 			for _, v in ipairs(outbounds) do
 				if v.tag == urltest_tag then
+					if fork_optimize then urltest_outbounds[urltest_tag] = v end
 					return v, true
 				end
 			end
@@ -1391,17 +1398,30 @@ function gen_config(var)
 				local ut_node_id = ut_nodes[i]
 				local ut_node_tag = "ut-" .. ut_node_id
 				local is_new_ut_node = true
-				for _, outbound in ipairs(outbounds) do
-					if string.sub(outbound.tag, 1, #ut_node_tag) == ut_node_tag then
+				if fork_optimize then
+					local existing_tag = ut_outbound_tags[ut_node_id]
+					if existing_tag then
 						is_new_ut_node = false
-						valid_nodes[#valid_nodes + 1] = outbound.tag
-						break
+						valid_nodes[#valid_nodes + 1] = existing_tag
+					end
+				else
+					for _, outbound in ipairs(outbounds) do
+						if string.sub(outbound.tag, 1, #ut_node_tag) == ut_node_tag then
+							is_new_ut_node = false
+							valid_nodes[#valid_nodes + 1] = outbound.tag
+							break
+						end
 					end
 				end
 				if is_new_ut_node then
 					local outboundTag = gen_outbound_get_tag(flag, ut_node_id, ut_node_tag, { fragment = singbox_settings.fragment == "1" or nil, record_fragment = singbox_settings.record_fragment == "1" or nil })
 					if outboundTag then
+						if fork_optimize then
+							ut_outbound_tags[ut_node_id] = outboundTag
+						end
 						valid_nodes[#valid_nodes + 1] = outboundTag
+					elseif fork_optimize then
+						ut_outbound_tags[ut_node_id] = false
 					end
 				end
 			end
@@ -1416,6 +1436,9 @@ function gen_config(var)
 				idle_timeout = (api.format_go_time(_node.urltest_idle_timeout) ~= "0s") and api.format_go_time(_node.urltest_idle_timeout) or "30m",
 				interrupt_exist_connections = (_node.urltest_interrupt_exist_connections == "true" or _node.urltest_interrupt_exist_connections == "1") and true or false
 			}
+			if fork_optimize then
+				urltest_outbounds[urltest_tag] = outbound
+			end
 			return outbound
 		end
 
@@ -2340,7 +2363,6 @@ function gen_config(var)
 			tag = "direct",
 			routing_mark = 255,
 		})
-		local fork_optimize = ((api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
 		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and (value.server_port or value.server_ports) and not NO_RUN then
@@ -2494,7 +2516,7 @@ _G.gen_config = gen_config
 _G.gen_proto_config = gen_proto_config
 _G.geo_convert_srs = geo_convert_srs
 
-if arg[1] then
+if arg and arg[1] then
 	local func =_G[arg[1]]
 	if func then
 		local var = nil

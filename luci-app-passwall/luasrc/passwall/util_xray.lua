@@ -2221,7 +2221,7 @@ end
 _G.gen_config = gen_config
 _G.gen_proto_config = gen_proto_config
 
-if arg[1] then
+if arg and arg[1] then
 	local func =_G[arg[1]]
 	if func then
 		local var = nil
