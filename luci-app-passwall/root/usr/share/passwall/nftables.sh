@@ -1622,12 +1622,12 @@ del_firewall_rule() {
 	done
 
 	# Flush all PSW_ custom chains first to sever all jump references and avoid "Resource busy"
-	for psw_chain in $(nft list chains $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
+	for psw_chain in $(nft -a list table $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
 		nft flush chain $NFTABLE_NAME "$psw_chain" 2>/dev/null
 	done
 
 	# Delete all PSW_ custom chains cleanly by name
-	for psw_chain in $(nft list chains $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
+	for psw_chain in $(nft -a list table $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
 		nft delete chain $NFTABLE_NAME "$psw_chain" 2>/dev/null
 	done
 

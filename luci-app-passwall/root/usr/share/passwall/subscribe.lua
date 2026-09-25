@@ -2151,7 +2151,7 @@ local function update_node(manual)
 	end
 
 	if manual ~= 1 then
-		luci.sys.call("/etc/init.d/passwall restart > /dev/null 2>&1 &")
+		luci.sys.call("nohup /etc/init.d/passwall restart > /dev/null 2>&1 &")
 	end
 end
 
