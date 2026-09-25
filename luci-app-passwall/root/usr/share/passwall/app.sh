@@ -866,7 +866,7 @@ start_socks() {
 				local log=$(config_n_get $id log 1)
 				[ "$log" = "0" ] && log_file=""
 				local http_port=$(config_n_get $id http_port 0)
-				local http_config_file="${flag}_http.json"
+				local http_config_file="${id}_http.json"
 				local enable_autoswitch=$(config_n_get $id enable_autoswitch 0)
 				local no_rec=0
 				[ "$enable_autoswitch" = "1" ] && no_rec=1
