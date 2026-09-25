@@ -4,6 +4,17 @@
 APP_FILE=${APP_PATH}/app.sh
 
 flag=0
+LOG_EVENT_FILTER=""
+LOG_EVENT_CMD=""
+
+echolog() {
+	local d="$(date "+%Y-%m-%d %H:%M:%S")"
+	local c="$*"
+	echo -e "$d: $c" >>$LOG_FILE
+	[ -n "$LOG_EVENT_CMD" ] && [ -n "$LOG_EVENT_FILTER" ] && echo -n "$c" | grep -Eq "$LOG_EVENT_FILTER" 2>/dev/null && {
+		sh -c "$(echo -n "$LOG_EVENT_CMD" | sed "s/%s/$c/g")" >/dev/null 2>&1 &
+	}
+}
 
 check_process() {
 	while busybox pgrep -af "${CONFIG}/" | grep -E 'app\.sh.*(start|stop)|nftables\.sh|iptables\.sh|subscribe\.lua' >/dev/null; do
@@ -183,8 +194,8 @@ test_auto_switch() {
 start() {
 	id=$1
 	LOCK_FILE=${LOCK_PATH}/${CONFIG}_socks_auto_switch_${id}.lock
-	LOG_EVENT_FILTER=$(uci -q get "${CONFIG}.global[0].log_event_filter" 2>/dev/null)
-	LOG_EVENT_CMD=$(uci -q get "${CONFIG}.global[0].log_event_cmd" 2>/dev/null)
+	LOG_EVENT_FILTER=$(config_n_get @global[0] log_event_filter)
+	LOG_EVENT_CMD=$(config_n_get @global[0] log_event_cmd)
 	main_node=$(config_n_get $id node)
 	socks_port=$(config_n_get $id port 0)
 	delay=$(config_n_get $id autoswitch_testing_time 30)
