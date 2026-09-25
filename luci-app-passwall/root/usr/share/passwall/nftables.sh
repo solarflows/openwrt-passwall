@@ -967,17 +967,23 @@ filter_direct_node_list() {
 							local safe_addr = addr:match("^[%w%.%-_%[%]:]+$")
 							local safe_pexpr = pexpr:match("^[%d,%-{}%s]+$")
 							if safe_addr and safe_pexpr then
+								local is_v6 = safe_addr:find(":") ~= nil
+								local is_v4 = safe_addr:match("^%d+%.%d+%.%d+%.%d+$") ~= nil
 								for _, stream in ipairs({"tcp", "udp"}) do
 									local comm = safe_addr .. ":" .. port .. ":" .. stream
-									local ch4 = (stream == "udp" or is_tproxy == "TPROXY") and "PSW_OUTPUT_MANGLE" or "PSW_OUTPUT_NAT"
-									if not existing[ch4 .. ":" .. comm] then
-										os.execute(string.format("nft insert rule %s %s meta l4proto %s ip daddr %s %s dport %s return comment %q 2>/dev/null", nftable, ch4, stream, safe_addr, stream, safe_pexpr, comm))
-										existing[ch4 .. ":" .. comm] = true
+									if not is_v6 then
+										local ch4 = (stream == "udp" or is_tproxy == "TPROXY") and "PSW_OUTPUT_MANGLE" or "PSW_OUTPUT_NAT"
+										if not existing[ch4 .. ":" .. comm] then
+											os.execute(string.format("nft insert rule %s %s meta l4proto %s ip daddr %s %s dport %s return comment %q 2>/dev/null", nftable, ch4, stream, safe_addr, stream, safe_pexpr, comm))
+											existing[ch4 .. ":" .. comm] = true
+										end
 									end
-									local ch6 = "PSW_OUTPUT_MANGLE_V6"
-									if not existing[ch6 .. ":" .. comm] then
-										os.execute(string.format("nft insert rule %s %s meta l4proto %s ip6 daddr %s %s dport %s return comment %q 2>/dev/null", nftable, ch6, stream, safe_addr, stream, safe_pexpr, comm))
-										existing[ch6 .. ":" .. comm] = true
+									if not is_v4 then
+										local ch6 = "PSW_OUTPUT_MANGLE_V6"
+										if not existing[ch6 .. ":" .. comm] then
+											os.execute(string.format("nft insert rule %s %s meta l4proto %s ip6 daddr %s %s dport %s return comment %q 2>/dev/null", nftable, ch6, stream, safe_addr, stream, safe_pexpr, comm))
+											existing[ch6 .. ":" .. comm] = true
+										end
 									end
 								end
 							end
@@ -1622,12 +1628,12 @@ del_firewall_rule() {
 	done
 
 	# Flush all PSW_ custom chains first to sever all jump references and avoid "Resource busy"
-	for psw_chain in $(nft list chains $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
+	for psw_chain in $(nft -a list table $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
 		nft flush chain $NFTABLE_NAME "$psw_chain" 2>/dev/null
 	done
 
 	# Delete all PSW_ custom chains cleanly by name
-	for psw_chain in $(nft list chains $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
+	for psw_chain in $(nft -a list table $NFTABLE_NAME 2>/dev/null | awk '/chain PSW_/ {print $2}'); do
 		nft delete chain $NFTABLE_NAME "$psw_chain" 2>/dev/null
 	done
 
