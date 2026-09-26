@@ -55,17 +55,14 @@ start() {
 }
 
 stop() {
-	trap '' TERM HUP
 	unlock
 	set_lock
 	[ $? == 1 ] && echolog "停止脚本等待超时，不重复运行，退出." && exit 0
 	$APP_FILE stop
 	unset_lock
-	trap - TERM HUP
 }
 
 restart() {
-	trap '' TERM HUP
 	set_lock
 	[ $? == 1 ] && echolog "脚本已经在运行，不重复运行，退出." && exit 0
 	rule_lock=${LOCK_FILE_DIR}/${CONFIG}_rule_update.lock
@@ -77,10 +74,9 @@ restart() {
 		sleep 2
 	done
 	rm -f "$rule_lock" "$sub_lock"
-	$APP_FILE stop restart
+	$APP_FILE stop
 	$APP_FILE start $1
 	unset_lock
-	trap - TERM HUP
 }
 
 reload() {

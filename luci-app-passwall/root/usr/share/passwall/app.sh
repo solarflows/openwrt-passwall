@@ -1719,7 +1719,6 @@ start() {
 }
 
 stop() {
-	local is_restart="$1"
 	clean_log
 	eval_cache_var
 	[ -n "$USE_TABLES" ] && source $APP_PATH/${USE_TABLES}.sh stop
@@ -1739,7 +1738,7 @@ stop() {
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
-	[ "$is_restart" != "restart" ] && stop_crontab
+	stop_crontab
 	source $APP_PATH/helper_smartdns.sh del
 	rm -rf $GLOBAL_DNSMASQ_CONF
 	rm -rf $GLOBAL_DNSMASQ_CONF_PATH
@@ -1882,7 +1881,6 @@ start)
 	start "$@"
 	;;
 stop)
-	shift
-	stop "$@"
+	stop
 	;;
 esac
