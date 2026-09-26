@@ -801,9 +801,7 @@ end
 
 if reboot == 1 then
 	if arg3 == "cron" then
-		if not fs.access(api.LOCK_PREFIX .. ".lock") then
-			luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
-		end
+		luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
 	end
 
 	log("重启服务，应用新的规则。")

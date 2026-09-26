@@ -2146,13 +2146,11 @@ local function update_node(manual)
 	uci_save(true)
 
 	if arg[3] == "cron" then
-		if not fs.access(api.LOCK_PREFIX .. ".lock") then
-			luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
-		end
+		luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
 	end
 
 	if manual ~= 1 then
-		luci.sys.call("nohup /etc/init.d/passwall restart > /dev/null 2>&1 &")
+		luci.sys.call("(command -v setsid >/dev/null 2>&1 && setsid /etc/init.d/passwall restart || nohup /etc/init.d/passwall restart) > /dev/null 2>&1 &")
 	end
 end
 
