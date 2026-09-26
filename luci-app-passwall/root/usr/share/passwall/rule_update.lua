@@ -801,7 +801,8 @@ end
 
 if reboot == 1 then
 	if arg3 == "cron" then
-		luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
+		local f = io.open(api.LOCK_PREFIX .. "_cron.lock", "w")
+		if f then f:close() end
 	end
 
 	log("重启服务，应用新的规则。")

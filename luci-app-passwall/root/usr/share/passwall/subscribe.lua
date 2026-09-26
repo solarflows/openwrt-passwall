@@ -2146,7 +2146,8 @@ local function update_node(manual)
 	uci_save(true)
 
 	if arg[3] == "cron" then
-		luci.sys.call("touch %s_cron.lock" % api.LOCK_PREFIX)
+		local f = io.open(api.LOCK_PREFIX .. "_cron.lock", "w")
+		if f then f:close() end
 	end
 
 	if manual ~= 1 then

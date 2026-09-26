@@ -3,9 +3,6 @@
 START=99
 STOP=15
 
-# Escape cgroup v2 sandbox (e.g. cron::instance1) into root cgroup if supported
-[ -w /sys/fs/cgroup/cgroup.procs ] && echo 0 > /sys/fs/cgroup/cgroup.procs 2>/dev/null
-
 ROOT="${IPKG_INSTROOT:-}"
 . "$ROOT/usr/share/passwall/utils.sh"
 APP_FILE=${APP_PATH}/app.sh
@@ -80,7 +77,7 @@ restart() {
 		sleep 2
 	done
 	rm -f "$rule_lock" "$sub_lock"
-	$APP_FILE stop
+	$APP_FILE stop restart
 	$APP_FILE start $1
 	unset_lock
 	trap - TERM HUP
