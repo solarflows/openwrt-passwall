@@ -1822,6 +1822,7 @@ local function curl(url, file, ua, mode)
 	curl_args[#curl_args + 1] = '--user-agent "' .. ua .. '"'
 
 	local return_code, result
+	local http_code, header_str = 0, ""
 	if mode == "direct" then
 		return_code, result = api.curl_base(url, file, curl_args)
 	elseif mode == "proxy" then

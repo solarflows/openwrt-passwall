@@ -1,4 +1,5 @@
 local api = require "luci.passwall.api"
+local datatypes = api.datatypes
 api.set_default_cbi()
 
 m = Map()
