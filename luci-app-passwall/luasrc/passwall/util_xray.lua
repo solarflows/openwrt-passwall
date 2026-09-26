@@ -928,6 +928,8 @@ function gen_config(var)
 	local inbounds = {}
 	local outbounds = {}
 	local COMMON = {}
+	local fragment_table, noise_table = nil, nil
+	local inner_fakedns = "0"
 
 	local xray_settings = api.uci_get_c("@global_xray[0]") or {}
 
