@@ -2147,7 +2147,7 @@ local function update_node(manual)
 
 	local action = (arg[3] == "cron") and " cron" or ""
 	if manual ~= 1 then
-		luci.sys.call("/etc/init.d/passwall restart%s > /dev/null 2>&1 &" % action)
+		luci.sys.call("(command -v setsid >/dev/null 2>&1 && setsid /etc/init.d/passwall restart" .. action .. " || nohup /etc/init.d/passwall restart" .. action .. ") > /dev/null 2>&1 &")
 	end
 end
 
