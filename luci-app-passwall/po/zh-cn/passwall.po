@@ -2225,3 +2225,21 @@ msgstr "Fork 性能优化套件"
 
 msgid "Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."
 msgstr "启用 Fork 专属优化脚本：包含出站规则链置顶、毫秒级增量节点过滤、原生 C 库订阅极速解析 (提速 750 倍) 及转发参数调优。"
+
+msgid "SmartDNS Disable IP Alias (-no-ip-alias)"
+msgstr "SmartDNS 代理域名禁用 IP 别名 (-no-ip-alias)"
+
+msgid "Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."
+msgstr "在为代理域名生成 SmartDNS 规则时追加 -no-ip-alias，忽略全局 ip-alias 别名映射，防止分流与防火墙集合匹配异常。"
+
+msgid "SmartDNS Disable Proxy Cache (-no-cache)"
+msgstr "SmartDNS 代理域名禁用缓存 (-no-cache)"
+
+msgid "Do not cache DNS query results for proxy domains in SmartDNS, ensuring real-time DNS resolution during node switching."
+msgstr "在 SmartDNS 中对代理域名禁用缓存，确保节点切换或流媒体调度时始终向远端请求最新实时 IP。"
+
+msgid "SmartDNS Skip Static Address Rules (-no-rule-addr)"
+msgstr "SmartDNS 代理域名跳过静态地址规则 (-no-rule-addr)"
+
+msgid "Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."
+msgstr "在 SmartDNS 中对代理域名跳过 address 静态重定向规则，防止自定义内网劫持或去广告规则误拦截代理流量。"

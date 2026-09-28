@@ -101,6 +101,8 @@ function index()
 	entry({"admin", "services", appname, "add_shunt_rule"}, call("add_shunt_rule")).leaf = true
 	entry({"admin", "services", appname, "delete_select_shunt_rules"}, call("delete_select_shunt_rules")).leaf = true
 
+	-- 新增IP信息查询路由
+	entry({"admin", "services", appname, "ip_info"}, call("ip_info")).leaf = true
 	--[[rule_list]]
 	entry({"admin", "services", appname, "read_rulelist"}, call("read_rulelist")).leaf = true
 
@@ -412,6 +414,37 @@ function connect_status()
 		e.handshake_time = string.format("%.2f", pretransfer * 1000)
 		e.ping_type = "curl"
 	end
+	http_write_json(e)
+end
+
+-- IP信息查询接口
+function ip_info()
+	local e = {}
+	local args = {
+		"-skfL",
+		"--connect-timeout 3",
+		"--max-time 10",
+		"-H 'Accept: application/json'",
+		"-A 'passwall-ip-check'"
+	}
+	local return_code, result = api.curl_auto("https://ip.api.skk.moe/cf-geoip", nil, args)
+
+	if return_code ~= 0 or not result or result == "" then
+		e.error = "Network request failed"
+	else
+		local ok, data = pcall(jsonParse, result)
+		if not ok or type(data) ~= "table" or not data.ip or not data.country then
+			e.error = "Invalid API response"
+		else
+			e.ip = data.ip
+			e.country = data.country
+			e.city = data.city or ""
+			e.region = data.region or ""
+			e.asn = data.asn
+			e.asOrg = data.asOrg
+		end
+	end
+
 	http_write_json(e)
 end
 
