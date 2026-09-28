@@ -2370,5 +2370,5 @@ end
 update_lock:close()
 if restart_required then
 	local action = arg[3] == "cron" and " cron" or ""
-	luci.sys.call("/etc/init.d/passwall restart" .. action .. " > /dev/null 2>&1 &")
+	luci.sys.call("(command -v setsid >/dev/null 2>&1 && setsid /etc/init.d/passwall restart" .. action .. " || nohup /etc/init.d/passwall restart" .. action .. ") > /dev/null 2>&1 &")
 end
