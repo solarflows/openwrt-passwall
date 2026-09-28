@@ -272,6 +272,7 @@ if DEFAULT_DNS_GROUP then
 	elseif DEFAULT_DNS_GROUP == LOCAL_GROUP then
 		domain_rules_str = domain_rules_str .. (LOCAL_EXTEND_ARG ~= "" and " " .. LOCAL_EXTEND_ARG or "")
 	end
+	domain_rules_str = domain_rules_str .. " -no-ip-alias"
 	table.insert(config_lines, domain_rules_str)
 end
 
@@ -468,6 +469,7 @@ if USE_PROXY_LIST == "1" and is_file_nonzero(file_proxy_host) then
 	local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 	domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 	domain_rules_str = domain_rules_str .. " -no-serve-expired"
+	domain_rules_str = domain_rules_str .. " -no-ip-alias"
 	local sets = {
 		"#4:" .. setflag .. "psw_black"
 	}
@@ -491,6 +493,7 @@ if USE_GFW_LIST == "1" and is_file_nonzero(RULES_PATH .. "/gfwlist") then
 	local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 	domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 	domain_rules_str = domain_rules_str .. " -no-serve-expired"
+	domain_rules_str = domain_rules_str .. " -no-ip-alias"
 	local sets = {
 		"#4:" .. setflag .. "psw_gfw"
 	}
@@ -530,6 +533,7 @@ if CHN_LIST ~= "0" and is_file_nonzero(RULES_PATH .. "/chnlist") then
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 		domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 		domain_rules_str = domain_rules_str .. " -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -no-ip-alias"
 		local sets = {
 			"#4:" .. setflag .. "psw_chn"
 		}
@@ -677,6 +681,7 @@ if IS_SHUNT_NODE then
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 		domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 		domain_rules_str = domain_rules_str .. " -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -no-ip-alias"
 		local sets = {
 			"#4:" .. setflag .. "psw_shunt"
 		}
