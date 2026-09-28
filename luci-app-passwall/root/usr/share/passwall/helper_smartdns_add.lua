@@ -23,6 +23,23 @@ local NFTFLAG = var["-NFTFLAG"]
 local SUBNET = var["-SUBNET"]
 local LISTEN_PORT = var["-LISTEN_PORT"]
 local LOCAL_PORT = var["-LOCAL_PORT"]
+local NO_IP_ALIAS = var["-NO_IP_ALIAS"] or "1"
+local NO_CACHE = var["-NO_CACHE"] or "0"
+local NO_RULE_ADDR = var["-NO_RULE_ADDR"] or "0"
+
+local function get_remote_rule_extra()
+	local extra = ""
+	if NO_IP_ALIAS == "1" then
+		extra = extra .. " -no-ip-alias"
+	end
+	if NO_CACHE == "1" then
+		extra = extra .. " -no-cache"
+	end
+	if NO_RULE_ADDR == "1" then
+		extra = extra .. " -no-rule-addr"
+	end
+	return extra
+end
 
 local sys = api.sys
 local fs = api.fs
@@ -267,7 +284,7 @@ end
 if DEFAULT_DNS_GROUP then
 	local domain_rules_str = "domain-rules /./ -nameserver " .. DEFAULT_DNS_GROUP
 	if DEFAULT_DNS_GROUP == REMOTE_GROUP then
-		domain_rules_str = domain_rules_str .. " -speed-check-mode none -d no -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -d no -no-serve-expired" .. get_remote_rule_extra()
 		domain_rules_str = domain_rules_str .. " -address " .. ((only_global and IS_SHUNT_NODE) and "-6" or (NO_PROXY_IPV6 == "1" and "#6" or "-6"))
 	elseif DEFAULT_DNS_GROUP == LOCAL_GROUP then
 		domain_rules_str = domain_rules_str .. (LOCAL_EXTEND_ARG ~= "" and " " .. LOCAL_EXTEND_ARG or "")
@@ -468,6 +485,7 @@ if USE_PROXY_LIST == "1" and is_file_nonzero(file_proxy_host) then
 	local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 	domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 	domain_rules_str = domain_rules_str .. " -no-serve-expired"
+	domain_rules_str = domain_rules_str .. " -no-ip-alias"
 	local sets = {
 		"#4:" .. setflag .. "psw_black"
 	}
@@ -491,6 +509,7 @@ if USE_GFW_LIST == "1" and is_file_nonzero(RULES_PATH .. "/gfwlist") then
 	local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
 	domain_rules_str = domain_rules_str .. " -speed-check-mode none"
 	domain_rules_str = domain_rules_str .. " -no-serve-expired"
+	domain_rules_str = domain_rules_str .. " -no-ip-alias"
 	local sets = {
 		"#4:" .. setflag .. "psw_gfw"
 	}
@@ -528,8 +547,7 @@ if CHN_LIST ~= "0" and is_file_nonzero(RULES_PATH .. "/chnlist") then
 	--回中国模式
 	if CHN_LIST == "proxy" then
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
-		domain_rules_str = domain_rules_str .. " -speed-check-mode none"
-		domain_rules_str = domain_rules_str .. " -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired" .. get_remote_rule_extra()
 		local sets = {
 			"#4:" .. setflag .. "psw_chn"
 		}
@@ -670,7 +688,7 @@ if IS_SHUNT_NODE and not only_global then
 			string.format("domain-set -name %s -file %s", domain_set_name, shunt_direct_host)
 		}
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
-		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired" .. get_remote_rule_extra()
 		local sets = {
 			"#4:" .. setflag .. "psw_shunt",
 			"#6:" .. setflag .. "psw_shunt6"
@@ -686,7 +704,7 @@ if IS_SHUNT_NODE and not only_global then
 			string.format("domain-set -name %s -file %s", domain_set_name, shunt_proxy_host)
 		}
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
-		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired" .. get_remote_rule_extra()
 		local sets = {
 			"#4:" .. setflag .. "psw_shunt",
 			"#6:" .. setflag .. "psw_shunt6"
@@ -702,7 +720,7 @@ if IS_SHUNT_NODE and not only_global then
 			string.format("domain-set -name %s -file %s", domain_set_name, shunt_black_host)
 		}
 		local domain_rules_str = string.format('domain-rules /domain-set:%s/ -nameserver %s', domain_set_name, REMOTE_GROUP)
-		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired"
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -no-serve-expired" .. get_remote_rule_extra()
 		local sets = {
 			"#4:" .. setflag .. "psw_shunt",
 			"#6:" .. setflag .. "psw_shunt6"

@@ -152,13 +152,12 @@ o.default = 1070
 o.placeholder = 1070
 o.datatype = "range(1,65535)"
 o:depends("_node", "1")
---[[
 if has_singbox or has_xray then
 	o = s:taboption("Main", Value, "node_http_port", translate("Node") .. " HTTP " .. translate("Listen Port") .. " " .. translate("0 is not use"))
-	o.default = 0
+	o.default = 10708
 	o.datatype = "port"
+	o:depends("_node", "1")
 end
-]]--
 o = s:taboption("Main", Flag, "node_socks_bind_local", translate("Node") .. " Socks " .. translate("Bind Local"), translate("When selected, it can only be accessed localhost."))
 o.default = "1"
 o:depends("_node", "1")
@@ -208,6 +207,24 @@ if api.is_finded("smartdns") then
 		end
 		return value
 	end
+
+	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns")
+	o.description = translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets.")
+
+	o = s:taboption("DNS", Flag, "smartdns_no_cache", translate("SmartDNS Disable Proxy Cache (-no-cache)"))
+	o.default = "0"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns")
+	o.description = translate("Do not cache DNS query results for proxy domains in SmartDNS, ensuring real-time DNS resolution during node switching.")
+
+	o = s:taboption("DNS", Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"))
+	o.default = "0"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns")
+	o.description = translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic.")
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))
