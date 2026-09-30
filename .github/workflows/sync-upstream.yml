@@ -1,0 +1,137 @@
+name: "Sync Upstream and Rebase Custom"
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync and rebase even if upstream main is unchanged'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync_and_rebase:
+    name: Sync and Rebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/Openwrt-Passwall/openwrt-passwall.git || git remote set-url upstream https://github.com/Openwrt-Passwall/openwrt-passwall.git
+          git fetch upstream --tags
+          git fetch upstream main
+
+      - name: Check for upstream updates
+        id: check_update
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream/main)
+          BASE_SHA=$(git merge-base origin/main upstream/main 2>/dev/null || echo "")
+          PREV_MAIN_SHA=$(git rev-parse origin/main)
+          echo "Upstream main commit: ${UPSTREAM_SHA}"
+          echo "Common base commit:   ${BASE_SHA}"
+          echo "Previous main commit: ${PREV_MAIN_SHA}"
+          echo "prev_main_sha=${PREV_MAIN_SHA}" >> "$GITHUB_OUTPUT"
+          if [ "$UPSTREAM_SHA" = "$BASE_SHA" ] && [ "${{ inputs.force_sync }}" != "true" ]; then
+            echo "Upstream main is already integrated into local main. Nothing to do."
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream changes detected."
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync main branch
+        if: steps.check_update.outputs.has_update == 'true'
+        run: |
+          git checkout main
+          git reset --hard upstream/main
+          git checkout origin/main -- .github/workflows/sync-upstream.yml 2>/dev/null || true
+          if [ -n "$(git status --porcelain .github/workflows/sync-upstream.yml)" ]; then
+            git add .github/workflows/sync-upstream.yml
+            git commit -m "ci: maintain sync-upstream workflow on main"
+          fi
+          git push origin main --force-with-lease
+          git push origin --tags 2>/dev/null || true
+
+      - name: Rebase custom branch onto main
+        if: steps.check_update.outputs.has_update == 'true'
+        run: |
+          git checkout custom
+
+          # Attempt rebase using --onto to cleanly skip any rewritten main commits
+          PREV_MAIN="${{ steps.check_update.outputs.prev_main_sha }}"
+          if [ -n "$PREV_MAIN" ] && git merge-base --is-ancestor "$PREV_MAIN" custom 2>/dev/null; then
+            echo "Rebasing custom onto main with upstream boundary: $PREV_MAIN"
+            REBASE_CMD="git rebase --onto main $PREV_MAIN custom"
+          else
+            echo "Rebasing custom onto main"
+            REBASE_CMD="git rebase main"
+          fi
+
+          if ! eval "$REBASE_CMD"; then
+            echo "::warning::Initial rebase encountered conflict. Attempting automated resolution..."
+
+            resolve_makefile() {
+              [ ! -f "luci-app-passwall/Makefile" ] && return 1
+              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); sys.exit(0 if m and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m.group(1).strip()}\nPKG_RELEASE:=2', c, flags=re.S)) else 1)"
+            }
+
+            while [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; do
+              CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+              echo "Conflicted files: $CONFLICT_FILES"
+
+              # Auto-resolve workflow conflict by keeping main version
+              if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/sync-upstream\.yml"; then
+                echo "Auto-resolving sync-upstream.yml by checking out main version..."
+                git checkout --ours .github/workflows/sync-upstream.yml 2>/dev/null || true
+                git add .github/workflows/sync-upstream.yml
+              fi
+
+              # Auto-resolve Makefile version conflict
+              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
+                if resolve_makefile; then
+                  echo "Auto-resolved Makefile version conflict."
+                  git add luci-app-passwall/Makefile
+                fi
+              fi
+
+              REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
+              if [ -z "$REMAINING_CONFLICTS" ]; then
+                GIT_EDITOR=true git rebase --continue || true
+              else
+                echo "::error::Substantive code conflict detected! Aborting rebase to keep custom branch clean."
+                git diff
+                git rebase --abort
+                exit 1
+              fi
+            done
+          fi
+
+          echo "Rebase completed successfully."
+          git push origin custom --force-with-lease
+
+      - name: Trigger compile workflow
+        if: steps.check_update.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering Auto compile workflow for custom branch..."
+          gh workflow run "Auto compile with openwrt sdk.yml" --ref custom || echo "::warning::Failed to trigger compile workflow"
