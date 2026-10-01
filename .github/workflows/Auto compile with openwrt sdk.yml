@@ -81,6 +81,11 @@ jobs:
           echo "* 将文件上传到您的设备，使用 Shell 命令进行安装。" >>release.txt
           echo "  Upload files to your device, install it with shell command." >>release.txt
           echo "" >>release.txt
+          echo "### 软件包签名说明 / Package Signature Verification" >>release.txt
+          echo "本构建包已注入与 AutoWorkFlows 统一的数字签名，附件中附带对应公钥文件：" >>release.txt
+          echo "* **IPK (opkg)**: 导入 \`solarflows-usign-public.pub\` 至设备 \`/etc/opkg/keys/\` 目录。" >>release.txt
+          echo "* **APK (apk)**: 导入 \`solarflows-apk-public.pem\` 至设备 \`/etc/apk/keys/\` 目录。" >>release.txt
+          echo "" >>release.txt
           echo "ipk" >>release.txt
           echo "\`\`\`" >>release.txt
           echo "opkg install /path/to/package.ipk" >>release.txt
@@ -141,21 +146,44 @@ jobs:
         env:
           ARCH: ${{ matrix.container_tag }}
           PACKAGES: luci-app-passwall
+          INDEX: 1
+          KEY_BUILD: ${{ secrets.USIGN_KEY }}
+          PRIVATE_KEY: ${{ secrets.APK_BUILD_KEY }}
           # V: s
 
       - name: Process and Rename Artifacts
         id: compile
         run: |
           mkdir -p ${{ github.workspace }}/upload
-          
+
           # 使用 find 安全提取生成的 ipk/apk 及语言包
           find bin/packages/ -type f -name "luci-app-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
           find bin/packages/ -type f -name "luci-i18n-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
-          
+
           cd ${{ github.workspace }}/upload
-          
+
           for i in $(ls); do mv $i ${{ matrix.ver }}_$i; done
-          
+
+          # 导出签名公钥文件并随 release 一同发布
+          if [ "${{ matrix.ver }}" = "25.12+" ] && [ -n "${{ secrets.APK_BUILD_KEY }}" ]; then
+            printf '%s' "${{ secrets.APK_BUILD_KEY }}" > /tmp/apk-sec.pem
+            openssl ec -in /tmp/apk-sec.pem -pubout -out ${{ github.workspace }}/upload/solarflows-apk-public.pem 2>/dev/null || true
+            rm -f /tmp/apk-sec.pem
+          elif [ "${{ matrix.ver }}" != "25.12+" ] && [ -n "${{ secrets.USIGN_KEY }}" ]; then
+            printf '%s\n' "${{ secrets.USIGN_KEY }}" > /tmp/key-build
+            KEY_B64=$(grep -v '^untrusted comment:' /tmp/key-build | tr -d '\n')
+            printf '%s' "$KEY_B64" | base64 -d > /tmp/.seckey.bin 2>/dev/null || true
+            if [ "$(wc -c < /tmp/.seckey.bin 2>/dev/null)" = "104" ]; then
+              FP=$(dd if=/tmp/.seckey.bin bs=1 skip=32 count=8 2>/dev/null | od -An -tx8 | tr -d ' \n')
+              {
+                printf 'untrusted comment: public key %s\n' "$FP"
+                { printf 'Ed'; dd if=/tmp/.seckey.bin bs=1 skip=32 count=8 2>/dev/null; dd if=/tmp/.seckey.bin bs=1 skip=72 count=32 2>/dev/null; } | base64 -w 0
+                printf '\n'
+              } > ${{ github.workspace }}/upload/solarflows-usign-public.pub
+            fi
+            rm -f /tmp/key-build /tmp/.seckey.bin
+          fi
+
           echo "status=success" >> $GITHUB_OUTPUT
       - name: Upload to release
         uses: softprops/action-gh-release@v3
