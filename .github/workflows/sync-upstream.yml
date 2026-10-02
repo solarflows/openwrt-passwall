@@ -63,10 +63,10 @@ jobs:
         run: |
           git checkout main
           git reset --hard upstream/main
-          git checkout origin/main -- .github/workflows/sync-upstream.yml 2>/dev/null || true
-          if [ -n "$(git status --porcelain .github/workflows/sync-upstream.yml)" ]; then
-            git add .github/workflows/sync-upstream.yml
-            git commit -m "ci: maintain sync-upstream workflow on main"
+          git checkout origin/main -- .github/workflows/ 2>/dev/null || true
+          if [ -n "$(git status --porcelain .github/workflows/)" ]; then
+            git add .github/workflows/
+            git commit -m "ci: maintain workflows on main"
           fi
           git push origin main --force-with-lease
           git push origin --tags 2>/dev/null || true
@@ -98,12 +98,12 @@ jobs:
               CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
               echo "Conflicted files: $CONFLICT_FILES"
 
-              # Auto-resolve workflow conflict by keeping main version
-              if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/sync-upstream\.yml"; then
-                echo "Auto-resolving sync-upstream.yml by checking out main version..."
-                git checkout --ours .github/workflows/sync-upstream.yml 2>/dev/null || true
-                git add .github/workflows/sync-upstream.yml
-              fi
+              # Auto-resolve any workflow conflicts by keeping main version
+              for wf in $(echo "$CONFLICT_FILES" | grep "^\.github/workflows/"); do
+                echo "Auto-resolving $wf by checking out main version..."
+                git checkout --ours "$wf" 2>/dev/null || true
+                git add "$wf"
+              done
 
               # Auto-resolve Makefile version conflict
               if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
