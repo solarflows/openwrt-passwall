@@ -24,7 +24,7 @@ local SUBNET = var["-SUBNET"]
 local LISTEN_PORT = var["-LISTEN_PORT"]
 local LOCAL_PORT = var["-LOCAL_PORT"]
 local NO_IP_ALIAS = var["-NO_IP_ALIAS"] or "1"
-local NO_CACHE = var["-NO_CACHE"] or "0"
+local CACHE_MODE = var["-CACHE_MODE"] or "default"
 local NO_RULE_ADDR = var["-NO_RULE_ADDR"] or "0"
 
 local function get_remote_rule_extra()
@@ -32,8 +32,12 @@ local function get_remote_rule_extra()
 	if NO_IP_ALIAS == "1" then
 		extra = extra .. " -no-ip-alias"
 	end
-	if NO_CACHE == "1" then
+	if CACHE_MODE == "nocache" then
 		extra = extra .. " -no-cache"
+	elseif CACHE_MODE == "300" then
+		extra = extra .. " -rr-ttl-max 300"
+	elseif CACHE_MODE == "60" then
+		extra = extra .. " -rr-ttl-max 60"
 	end
 	if NO_RULE_ADDR == "1" then
 		extra = extra .. " -no-rule-addr"
