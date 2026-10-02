@@ -2211,11 +2211,29 @@ msgstr "SmartDNS 代理域名禁用 IP 别名 (-no-ip-alias)"
 msgid "Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."
 msgstr "在为代理域名生成 SmartDNS 规则时追加 -no-ip-alias，忽略全局 ip-alias 别名映射，防止分流与防火墙集合匹配异常。"
 
-msgid "SmartDNS Disable Proxy Cache (-no-cache)"
-msgstr "SmartDNS 代理域名禁用缓存 (-no-cache)"
+msgid "SmartDNS Group Rules Mode (group-begin/match)"
+msgstr "启用 SmartDNS 规则组模式 (group-begin/match)"
 
-msgid "Do not cache DNS query results for proxy domains in SmartDNS, ensuring real-time DNS resolution during node switching."
-msgstr "在 SmartDNS 中对代理域名禁用缓存，确保节点切换或流媒体调度时始终向远端请求最新实时 IP。"
+msgid "Use modern group-based sandbox architecture (group-begin/group-match) to isolate proxy DNS resolution."
+msgstr "使用 SmartDNS 现代规则组沙盒架构 (group-begin/group-match) 独立隔离代理 DNS 解析流。"
+
+msgid "SmartDNS Proxy Cache Mode"
+msgstr "SmartDNS 代理域名缓存时效策略"
+
+msgid "Default (SmartDNS Global Policy)"
+msgstr "默认时效 (跟随 SmartDNS 全局策略)"
+
+msgid "Short TTL (5 Minutes / 300s, Recommended)"
+msgstr "短时效缓存 (5 分钟 / 300秒，推荐)"
+
+msgid "Very Short TTL (1 Minute / 60s)"
+msgstr "极短时效 (1 分钟 / 60秒)"
+
+msgid "Disable Cache (-no-cache)"
+msgstr "关闭缓存 (每次实时穿透，-no-cache)"
+
+msgid "Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency."
+msgstr "控制代理域名的 DNS 记录缓存时效。较短的时效可以在兼顾低延迟的同时，在节点切换或动态 CDN 变动时即时平滑刷新。"
 
 msgid "SmartDNS Skip Static Address Rules (-no-rule-addr)"
 msgstr "SmartDNS 代理域名跳过静态地址规则 (-no-rule-addr)"
