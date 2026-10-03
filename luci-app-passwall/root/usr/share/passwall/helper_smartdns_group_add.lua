@@ -86,15 +86,14 @@ end
 
 local function get_geosite(list_arg, out_path)
 	local geosite_path = api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"
-	local geosite_file = geosite_path .. "geosite.dat"
-	if not fs.access(geosite_file) then
-		geosite_file = "/usr/share/passwall/rules/geosite.dat"
-	end
-	local cmd = string.format("geoview -f %s %s >> %s", geosite_file, list_arg, out_path)
-	if fs.access(geosite_file) then
-		return sys.call(cmd)
-	end
-	return 1
+	geosite_path = geosite_path:match("^(.*)/") .. "/geosite.dat"
+	if not is_file_nonzero(geosite_path) then return 1, "File geosite.dat not found" end
+	if not list_arg or list_arg == "" then return 1, "Site list cannot be empty" end
+	if not out_path or out_path == "" then return 1, "Output path cannot be empty" end
+	local bin = api.finded_com("geoview")
+	local cmd = string.format("%q -type geosite -append=true -input %q -list %q -output %q -lowmem=true",
+		bin, geosite_path, list_arg, out_path)
+	return api.exec_call(cmd)
 end
 
 sys.call("mkdir -p %s" % FLAG_PATH)
@@ -170,6 +169,10 @@ local set_type = (NFTFLAG == "1") and "-nftset" or "-ipset"
 
 -- 1. 屏蔽列表文件准备
 local file_block_host = CACHE_RULES_PATH .. "/block_host"
+if not fs.access(file_block_host .. "_ok") then
+	api.remove(file_block_host .. "*")
+end
+local block_geosite_flag = fs.access(file_block_host) and fs.access(file_block_host .. "_ok") and fs.access(file_block_host .. "_geo")
 if USE_BLOCK_LIST == "1" and not fs.access(file_block_host) then
 	local block_domain, lookup_block_domain = {}, {}
 	local geosite_arg = ""
@@ -195,8 +198,19 @@ if USE_BLOCK_LIST == "1" and not fs.access(file_block_host) then
 		end
 		f_out:close()
 	end
+	local success = true
 	if USE_GEOVIEW == "1" and geosite_arg ~= "" then
-		get_geosite(geosite_arg, file_block_host)
+		local code, out = get_geosite(geosite_arg, file_block_host)
+		if code == 0 then
+			log("  - 解析[屏蔽列表] Geosite 到屏蔽域名表(blocklist)完成")
+			sys.call("touch " .. file_block_host .. "_geo")
+		else
+			log("  - 解析[屏蔽列表] Geosite 到屏蔽域名表(blocklist)失败！[" .. out .. "]")
+			success = false
+		end
+	end
+	if success and fs.access(file_block_host) then
+		sys.call("touch " .. file_block_host .. "_ok")
 	end
 end
 
@@ -217,6 +231,10 @@ end
 
 -- 3. 直连（白名单）列表文件准备
 local file_direct_host = CACHE_RULES_PATH .. "/direct_host"
+if not fs.access(file_direct_host .. "_ok") then
+	api.remove(file_direct_host .. "*")
+end
+local direct_geosite_flag = fs.access(file_direct_host) and fs.access(file_direct_host .. "_ok") and fs.access(file_direct_host .. "_geo")
 if USE_DIRECT_LIST == "1" and not fs.access(file_direct_host) then
 	local direct_domain, lookup_direct_domain = {}, {}
 	local geosite_arg = ""
@@ -242,13 +260,28 @@ if USE_DIRECT_LIST == "1" and not fs.access(file_direct_host) then
 		end
 		f_out:close()
 	end
+	local success = true
 	if USE_GEOVIEW == "1" and geosite_arg ~= "" then
-		get_geosite(geosite_arg, file_direct_host)
+		local code, out = get_geosite(geosite_arg, file_direct_host)
+		if code == 0 then
+			log("  - 解析[直连列表] Geosite 到域名白名单(whitelist)完成")
+			sys.call("touch " .. file_direct_host .. "_geo")
+		else
+			log("  - 解析[直连列表] Geosite 到域名白名单(whitelist)失败！[" .. out .. "]")
+			success = false
+		end
+	end
+	if success and fs.access(file_direct_host) then
+		sys.call("touch " .. file_direct_host .. "_ok")
 	end
 end
 
 -- 4. 代理（黑名单）列表文件准备
 local file_proxy_host = CACHE_RULES_PATH .. "/proxy_host"
+if not fs.access(file_proxy_host .. "_ok") then
+	api.remove(file_proxy_host .. "*")
+end
+local proxy_geosite_flag = fs.access(file_proxy_host) and fs.access(file_proxy_host .. "_ok") and fs.access(file_proxy_host .. "_geo")
 if USE_PROXY_LIST == "1" and not fs.access(file_proxy_host) then
 	local proxy_domain, lookup_proxy_domain = {}, {}
 	local geosite_arg = ""
@@ -274,8 +307,19 @@ if USE_PROXY_LIST == "1" and not fs.access(file_proxy_host) then
 		end
 		f_out:close()
 	end
+	local success = true
 	if USE_GEOVIEW == "1" and geosite_arg ~= "" then
-		get_geosite(geosite_arg, file_proxy_host)
+		local code, out = get_geosite(geosite_arg, file_proxy_host)
+		if code == 0 then
+			log("  - 解析[代理列表] Geosite 到代理域名表(blacklist)完成")
+			sys.call("touch " .. file_proxy_host .. "_geo")
+		else
+			log("  - 解析[代理列表] Geosite 到代理域名表(blacklist)失败！[" .. out .. "]")
+			success = false
+		end
+	end
+	if success and fs.access(file_proxy_host) then
+		sys.call("touch " .. file_proxy_host .. "_ok")
 	end
 end
 
@@ -366,9 +410,27 @@ if IS_SHUNT_NODE and not only_global then
 	end
 
 	if not USE_CACHE and USE_GEOVIEW == "1" then
-		if geosite_direct_arg ~= "" then get_geosite(geosite_direct_arg, shunt_direct_host) end
-		if geosite_proxy_arg ~= "" then get_geosite(geosite_proxy_arg, shunt_proxy_host) end
-		if geosite_black_arg ~= "" then get_geosite(geosite_black_arg, shunt_black_host) end
+		local ok = true
+		local function resolve(arg, dest)
+			if arg == "" then return end
+			local code, out = get_geosite(arg, dest)
+			if code ~= 0 then
+				ok = false
+				log("  - 解析[分流节点] Geosite 失败！[" .. out .. "]")
+			end
+		end
+		resolve(geosite_direct_arg, shunt_direct_host)
+		resolve(geosite_proxy_arg,  shunt_proxy_host)
+		resolve(geosite_black_arg,  shunt_black_host)
+		if ok then
+			log("  - 解析[分流节点] Geosite 完成")
+		else
+			api.remove(MD5_FILE)
+		end
+	end
+
+	if USE_CACHE and USE_GEOVIEW == "1" and (geosite_direct_arg ~= "" or geosite_proxy_arg ~= "" or geosite_black_arg ~= "") then
+		log("  - [分流节点] Geosite 使用缓存结果，跳过重复解析")
 	end
 end
 
@@ -379,18 +441,27 @@ end
 table.insert(config_lines, "")
 table.insert(config_lines, "# ── 域名集注册 (domain-set) ──")
 if USE_BLOCK_LIST == "1" and is_file_nonzero(file_block_host) then
+	if block_geosite_flag then
+		log("  - [屏蔽列表] Geosite 使用缓存结果，跳过重复解析")
+	end
 	table.insert(config_lines, string.format("domain-set -name %s -file %s", "psw-block", file_block_host))
 end
 if is_file_nonzero(file_vpslist) then
 	table.insert(config_lines, string.format("domain-set -name %s -file %s", "psw-vpslist", file_vpslist))
 end
 if USE_DIRECT_LIST == "1" and is_file_nonzero(file_direct_host) then
+	if direct_geosite_flag then
+		log("  - [直连列表] Geosite 使用缓存结果，跳过重复解析")
+	end
 	table.insert(config_lines, string.format("domain-set -name %s -file %s", "psw-directlist", file_direct_host))
 end
 if CHN_LIST ~= "0" and is_file_nonzero(RULES_PATH .. "/chnlist") then
 	table.insert(config_lines, string.format("domain-set -name %s -file %s", "psw-chnlist", RULES_PATH .. "/chnlist"))
 end
 if USE_PROXY_LIST == "1" and is_file_nonzero(file_proxy_host) then
+	if proxy_geosite_flag then
+		log("  - [代理列表] Geosite 使用缓存结果，跳过重复解析")
+	end
 	table.insert(config_lines, string.format("domain-set -name %s -file %s", "psw-proxylist", file_proxy_host))
 end
 if USE_GFW_LIST == "1" and is_file_nonzero(RULES_PATH .. "/gfwlist") then
