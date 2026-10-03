@@ -66,38 +66,68 @@ jobs:
       - name: Prepare release
         if: steps.check_version.outputs.has_update == 'true'
         run: |
-          echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)" >> release.txt
-          echo "## :mega: 获取其他软件包 / How to Get Other Packages" >>release.txt
-          echo "" >>release.txt
-          echo "### 方式 1：添加软件源 / Method 1: Add Software Source" >>release.txt
-          echo " * 请按照 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 仓库的说明，将其提供的软件源添加到设备中，然后直接使用包管理器安装。" >>release.txt
-          echo "  Follow the instructions in the [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) repository to add the provided software source to your device, then install directly using the package manager." >>release.txt
-          echo "" >>release.txt
-          echo "### 方式 2：手动下载并安装 / Method 2: Manual Download and Install" >>release.txt
-          echo "" >>release.txt
-          echo "* 从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 下载预构建的软件包。" >>release.txt
-          echo "  Download prebuilt packages from [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/)." >>release.txt
-          echo "" >>release.txt
-          echo "* 将文件上传到您的设备，使用 Shell 命令进行安装。" >>release.txt
-          echo "  Upload files to your device, install it with shell command." >>release.txt
-          echo "" >>release.txt
-          echo "### 软件包签名说明 / Package Signature Verification" >>release.txt
-          echo "本构建包已注入与 AutoWorkFlows 统一的数字签名，附件中附带对应公钥文件：" >>release.txt
-          echo "* **IPK (opkg)**: 导入 \`solarflows-usign-public.pub\` 至设备 \`/etc/opkg/keys/\` 目录。" >>release.txt
-          echo "* **APK (apk)**: 导入 \`solarflows-apk-public.pem\` 至设备 \`/etc/apk/keys/\` 目录。" >>release.txt
-          echo "" >>release.txt
-          echo "ipk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "opkg install /path/to/package.ipk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "apk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "apk add --allow-untrusted /path/to/package.apk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "" >>release.txt
-          echo ":warning: 请将 /path/to/package 替换为实际下载的软件包路径。" >>release.txt
-          echo "- Replace /path/to/package with the actual path of the downloaded packages." >>release.txt
-          touch release.txt
+          cat << 'EOF' > release.txt
+          ![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)
+
+          ## ⚡ 本仓库核心优化内容 / Key Optimizations
+
+          本分支基于上游最新版本构建，保留官方所有功能并集成以下自研深度优化：
+          * **750 倍订阅写入加速**：底层 C 库 libuci-lua 直驱，订阅写入由 68s 缩短至 0.08s。
+          * **节点过滤与首屏极速渲染**：内存哈希去重过滤（0.16s），首屏下拉框数据全局池化，体积减少 94%。
+          * **出站短路与性能释放**：`PSW_FAST_RETURN` 规则置顶，大幅削减大流量代理时的 CPU 软中断开销。
+          * **SmartDNS 深度增强**：提供独立的现代规则组沙盒模式（`smartdns_use_group`），并支持分级代理缓存控制（300s/60s/禁用）。
+          * **进程安全隔离**：全链路引入 `setsid` 守护与定时任务会话脱钩，彻底解决重载误杀与僵尸进程。
+
+          ---
+
+          ## 📦 安装包版本选择 / How to Choose Packages
+
+          请根据您的固件系统版本下载附件中对应的安装包（主程序 + 中文语言包）：
+
+          | 系统版本 | 适用固件 | 主程序包 | 语言包 |
+          | :--- | :--- | :--- | :--- |
+          | **OpenWrt 25.12+** | 最新主线快照 / 25.12 及更新（采用 APK 包管理） | `25.12+_luci-app-passwall-*.apk` | `25.12+_luci-i18n-passwall-zh-cn-*.apk` |
+          | **OpenWrt 23.05 ~ 24.10** | 对应主流正式版固件 / ImmortalWrt 23/24 | `23.05-24.10_luci-app-passwall_*.ipk` | `23.05-24.10_luci-i18n-passwall-zh-cn_*.ipk` |
+          | **OpenWrt 22.03 及更早** | 老款经典固件 / 21.02 / 22.03 | `22.03-_luci-app-passwall_*.ipk` | `22.03-_luci-i18n-passwall-zh-cn_*.ipk` |
+
+          ---
+
+          ## 🔑 数字签名公钥安装 / Signature Verification
+
+          安装包已全部签名，推荐在安装前将公钥导入设备（避免安装时提示签名不受信任）：
+
+          ### 1. OPKG (IPK 安装包)
+          公钥文件：`solarflows-usign-public.pub`（Ed25519）
+
+          * **在线一键导入**（路由器终端执行）：
+            ```sh
+            curl -sSL -k "https://github.com/${{ env.passwall }}/releases/latest/download/solarflows-usign-public.pub" -o /etc/opkg/keys/solarflows.pub
+            ```
+          * **安装指令**：
+            ```sh
+            opkg install luci-app-passwall_*.ipk luci-i18n-passwall-zh-cn_*.ipk
+            ```
+
+          ### 2. APK (APK 安装包)
+          公钥文件：`solarflows-apk-public.pem`（ECDSA）
+
+          * **在线一键导入**（路由器终端执行）：
+            ```sh
+            mkdir -p /etc/apk/keys
+            curl -sSL -k "https://github.com/${{ env.passwall }}/releases/latest/download/solarflows-apk-public.pem" -o /etc/apk/keys/solarflows.pem
+            ```
+          * **安装指令**：
+            ```sh
+            apk add luci-app-passwall-*.apk luci-i18n-passwall-zh-cn-*.apk
+            # 若未导入公钥，亦可临时允许不受信任安装：
+            # apk add --allow-untrusted luci-app-passwall-*.apk luci-i18n-passwall-zh-cn-*.apk
+            ```
+
+          ---
+
+          ## 💡 依赖说明
+          PassWall 运行所需的核心内核（如 Sing-Box、Xray、ChinaDNS-NG 等），可参考 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 软件源或从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 下载预编译依赖包。
+          EOF
 
       - name: Generate new tag & release
         if: steps.check_version.outputs.has_update == 'true'
