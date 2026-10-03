@@ -1277,8 +1277,8 @@ start_dns() {
 				-REMOTE_DNS ${smartdns_remote_dns} -DNS_MODE ${DNS_MODE:-socks} -TUN_DNS ${TUN_DNS} \
 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 				-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
-				-SUBNET 0 -NO_LOGIC_LOG 0 
-				-NO_IP_ALIAS  -CACHE_MODE "" -NO_RULE_ADDR 
+				-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0} \
+				-NO_IP_ALIAS ${smartdns_no_ip_alias} -CACHE_MODE "${smartdns_cache_mode}" -NO_RULE_ADDR ${smartdns_no_rule_addr} 
 
 			restart_smartdns
 

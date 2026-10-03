@@ -39,9 +39,6 @@ local function get_remote_rule_extra()
 	elseif CACHE_MODE == "60" then
 		extra = extra .. " -rr-ttl-max 60"
 	end
-	if NO_RULE_ADDR == "1" then
-		extra = extra .. " -no-rule-addr"
-	end
 	return extra
 end
 
@@ -207,7 +204,7 @@ end
 local force_https_soa = api.uci_get_c("@global[0]", "force_https_soa") or 0
 local proxy_server_name = "psw-proxy-server"
 config_lines = {
-	tonumber(LISTEN_PORT) ~= 0 and "bind [::]:" .. LISTEN_PORT .. "@lo" or "",
+	tonumber(LISTEN_PORT) ~= 0 and ("bind [::]:" .. LISTEN_PORT .. "@lo" .. (NO_RULE_ADDR == "1" and " -no-rule-addr" or "")) or "",
 	(tonumber(LOCAL_PORT) ~= 0 and LOCAL_GROUP) and "bind [::]:" .. LOCAL_PORT .. "@lo -group " ..  LOCAL_GROUP or "",
 	tonumber(force_https_soa) == 1 and "force-qtype-SOA 65" or "force-qtype-SOA -,65",
 	"server 223.5.5.5 -bootstrap-dns",
