@@ -2226,6 +2226,12 @@ msgstr "Fork 性能优化套件"
 msgid "Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."
 msgstr "启用 Fork 专属优化脚本：包含出站规则链置顶、毫秒级增量节点过滤、原生 C 库订阅极速解析 (提速 750 倍) 及转发参数调优。"
 
+msgid "NFTables Rules Optimization"
+msgstr "NFTables 规则优化"
+
+msgid "Optimize nftables rule order and rp_filter for performance."
+msgstr "优化 nftables 出站链规则顺序与 rp_filter 反向过滤参数以提升转发与代理性能。"
+
 msgid "SmartDNS Disable IP Alias (-no-ip-alias)"
 msgstr "SmartDNS 代理域名禁用 IP 别名 (-no-ip-alias)"
 
