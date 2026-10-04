@@ -2121,7 +2121,7 @@ function gen_config(var)
 		else
 			table.insert(outbounds, blackhole_outbound)
 		end
-		local fork_optimize = ((api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+		local fork_optimize = ((api.uci_get_c("@global_optimize[0]", "fork_optimize") or api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
 		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			local pt = value.protocol

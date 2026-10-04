@@ -1241,7 +1241,7 @@ function gen_config(var)
 	local COMMON = {}
 	local rules = {}
 	local inner_fakedns = "0"
-	local fork_optimize = ((api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+	local fork_optimize = ((api.uci_get_c("@global_optimize[0]", "fork_optimize") or api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
 	local ut_outbound_tags = {}
 	local urltest_outbounds = {}
 

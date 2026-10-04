@@ -2261,3 +2261,45 @@ msgstr "SmartDNS 代理域名跳过静态地址规则 (-no-rule-addr)"
 
 msgid "Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."
 msgstr "在 SmartDNS 中对代理域名跳过 address 静态重定向规则，防止自定义内网劫持或去广告规则误拦截代理流量。"
+
+msgid "Optimization & SmartDNS Settings"
+msgstr "性能与 SmartDNS 增强设置"
+
+msgid "SmartDNS Per-Rule Shunt Strategy"
+msgstr "SmartDNS 分流规则独立策略"
+
+msgid "Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."
+msgstr "为分流规则启用原子化域名集与独立 DNS 分组/缓存策略。"
+
+msgid "SmartDNS Resolve Group"
+msgstr "SmartDNS 解析分组"
+
+msgid "Specify the SmartDNS upstream group used for this shunt rule."
+msgstr "指定该分流规则使用的 SmartDNS 上游分组。"
+
+msgid "Default (Follow node destination)"
+msgstr "默认 (跟随分流落地节点)"
+
+msgid "Domestic Group (cn) - Low Latency & High Speed"
+msgstr "国内高速组 (cn) - 直连加速/Steam专属"
+
+msgid "Proxy Sandbox Group (passwall_proxy) - Anti-Pollution"
+msgstr "代理沙盒组 (passwall_proxy) - 海外防污染"
+
+msgid "SmartDNS Serve Expired (Optimistic Cache)"
+msgstr "SmartDNS 乐观缓存策略"
+
+msgid "Allow serving stale cache while revalidating asynchronously. Recommended for streaming media to prevent buffering pauses."
+msgstr "允许使用过期缓存并后台异步刷新。强烈建议流媒体规则开启，以彻底避免视频切片加载超时造成的卡顿断流。"
+
+msgid "Force Enable (yes)"
+msgstr "强制允许 (yes)"
+
+msgid "Force Disable (no)"
+msgstr "强制禁用 (no)"
+
+msgid "SmartDNS Disable IPv6 Resolution"
+msgstr "SmartDNS 屏蔽 IPv6 解析"
+
+msgid "Block AAAA records (-address #6) for this rule, forcing IPv4."
+msgstr "针对该分流规则拦截 AAAA 记录 (-address #6)，强制使用 IPv4。"

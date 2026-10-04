@@ -207,34 +207,6 @@ if api.is_finded("smartdns") then
 		end
 		return value
 	end
-
-	o = s:taboption("DNS", Flag, "smartdns_use_group", translate("SmartDNS Group Rules Mode (group-begin/match)"))
-	o.default = "0"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns")
-	o.description = translate("Use modern group-based sandbox architecture (group-begin/group-match) to isolate proxy DNS resolution.")
-
-	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"))
-	o.default = "1"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns")
-	o.description = translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets.")
-
-	o = s:taboption("DNS", ListValue, "smartdns_cache_mode", translate("SmartDNS Proxy Cache Mode"))
-	o:value("default", translate("Default (SmartDNS Global Policy)"))
-	o:value("300", translate("Short TTL (5 Minutes / 300s, Recommended)"))
-	o:value("60", translate("Very Short TTL (1 Minute / 60s)"))
-	o:value("nocache", translate("Disable Cache (-no-cache)"))
-	o.default = "default"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns")
-	o.description = translate("Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency.")
-
-	o = s:taboption("DNS", Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"))
-	o.default = "0"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns")
-	o.description = translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic.")
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))

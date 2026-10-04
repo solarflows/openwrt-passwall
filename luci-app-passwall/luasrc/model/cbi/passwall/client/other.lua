@@ -117,16 +117,6 @@ o.default = "1"
 o:value("0", "Iptables")
 o:value("1", "Nftables")
 
----- Fork Performance Toolkit Toggle
-o = s:option(Flag, "fork_optimize", translate("Fork Performance Toolkit"),
-	translate("Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."))
-o.default = 1
-o.rmempty = false
-o:depends("prefer_nft", "1")
-o.remove = function(self, section)
-	-- 禁止在隐藏时删除
-end
-
 ---- Check the transparent proxy component
 local handle = io.popen("lsmod")
 local mods = handle and handle:read("*a") or ""
@@ -266,6 +256,59 @@ if has_singbox then
 	o = s:option(Flag, "fragment", "TLS TCP " .. translate("Fragment"),
 		translate("Split handshake into multiple TCP segments. Enhances obfuscation. May increase delay. Use only if needed."))
 	o.default = 0
+end
+
+-- [[ Optimization & SmartDNS Settings ]]--
+s_opt = m:section(NamedSection, "@global_optimize[0]", "global_optimize", translate("Optimization & SmartDNS Settings"))
+
+---- Fork Performance Toolkit Toggle
+o = s_opt:option(Flag, "fork_optimize", translate("Fork Performance Toolkit"),
+	translate("Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."))
+o.default = 1
+o.rmempty = false
+
+---- NFTables Optimization Toggle
+o = s_opt:option(Flag, "nft_optimize", translate("NFTables Rules Optimization"),
+	translate("Optimize nftables rule order and rp_filter for performance."))
+o.default = 1
+o.rmempty = false
+
+---- SmartDNS Enhancements
+if api.is_finded("smartdns") then
+	local dns_shunt = api.uci_get_c("@global[0]", "dns_shunt") or ""
+
+	o = s_opt:option(Flag, "smartdns_use_group", translate("SmartDNS Group Rules Mode (group-begin/match)"),
+		translate("Use modern group-based sandbox architecture (group-begin/group-match) to isolate proxy DNS resolution."))
+	o.default = "1"
+	o.rmempty = false
+
+	o = s_opt:option(Flag, "smartdns_split_shunt", translate("SmartDNS Per-Rule Shunt Strategy"),
+		translate("Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."))
+	o.default = "0"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
+
+	o = s_opt:option(Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"),
+		translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
+
+	o = s_opt:option(ListValue, "smartdns_cache_mode", translate("SmartDNS Proxy Cache Mode"),
+		translate("Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency."))
+	o:value("default", translate("Default (SmartDNS Global Policy)"))
+	o:value("300", translate("Short TTL (5 Minutes / 300s, Recommended)"))
+	o:value("60", translate("Very Short TTL (1 Minute / 60s)"))
+	o:value("nocache", translate("Disable Cache (-no-cache)"))
+	o.default = "300"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
+
+	o = s_opt:option(Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"),
+		translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
 end
 
 return api.return_map(m)

@@ -54,6 +54,15 @@ config global_xray
 
 config global_singbox
 
+config global_optimize
+	option fork_optimize '1'
+	option nft_optimize '1'
+	option smartdns_use_group '1'
+	option smartdns_split_shunt '0'
+	option smartdns_cache_mode '300'
+	option smartdns_no_ip_alias '1'
+	option smartdns_no_rule_addr '1'
+
 config global_other
 	option auto_detection_time 'tcping'
 	option show_node_info '0'
