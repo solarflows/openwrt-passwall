@@ -259,6 +259,10 @@ if has_singbox then
 end
 
 -- [[ Optimization & SmartDNS Settings ]]--
+if not m.uci:get(m.config, "@global_optimize[0]") then
+	m.uci:section(m.config, "global_optimize")
+	m.uci:commit(m.config)
+end
 s_opt = m:section(NamedSection, "@global_optimize[0]", "global_optimize", translate("Optimization & SmartDNS Settings"))
 
 ---- Fork Performance Toolkit Toggle
