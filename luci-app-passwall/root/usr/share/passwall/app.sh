@@ -1287,6 +1287,7 @@ start_dns() {
 			local smartdns_no_ip_alias=$(config_n_get @global_optimize[0] smartdns_no_ip_alias $(config_n_get @global[0] smartdns_no_ip_alias 1))
 			local smartdns_cache_mode=$(config_n_get @global_optimize[0] smartdns_cache_mode $(config_n_get @global[0] smartdns_cache_mode "300"))
 			local smartdns_no_rule_addr=$(config_n_get @global_optimize[0] smartdns_no_rule_addr $(config_n_get @global[0] smartdns_no_rule_addr 1))
+			local smartdns_serve_expired=$(config_n_get @global_optimize[0] smartdns_serve_expired 1)
 			local smartdns_script="helper_smartdns_add.lua"
 			[ "$smartdns_use_group" = "1" ] && smartdns_script="helper_smartdns_group_add.lua"
 			lua $APP_PATH/${smartdns_script} -FLAG "default" -SMARTDNS_CONF "/tmp/etc/smartdns/$CONFIG.conf" \
@@ -1296,7 +1297,7 @@ start_dns() {
 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 				-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 				-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0} \
-				-NO_IP_ALIAS ${smartdns_no_ip_alias} -CACHE_MODE "${smartdns_cache_mode}" -NO_RULE_ADDR ${smartdns_no_rule_addr} \n				-SPLIT_SHUNT ${smartdns_split_shunt:-0}
+				-NO_IP_ALIAS ${smartdns_no_ip_alias} -CACHE_MODE "${smartdns_cache_mode}" -NO_RULE_ADDR ${smartdns_no_rule_addr} \n				-SPLIT_SHUNT ${smartdns_split_shunt:-0} -SERVE_EXPIRED ${smartdns_serve_expired:-1}
 
 			restart_smartdns
 

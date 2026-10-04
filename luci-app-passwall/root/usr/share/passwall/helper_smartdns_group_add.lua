@@ -27,9 +27,13 @@ local NO_IP_ALIAS = var["-NO_IP_ALIAS"] or "1"
 local CACHE_MODE = var["-CACHE_MODE"] or "default"
 local NO_RULE_ADDR = var["-NO_RULE_ADDR"] or "0"
 local SPLIT_SHUNT = var["-SPLIT_SHUNT"] or "0"
+local SERVE_EXPIRED = var["-SERVE_EXPIRED"] or "1"
 
 local function get_remote_rule_extra()
 	local extra = ""
+	if SERVE_EXPIRED == "0" then
+		extra = extra .. " -no-serve-expired"
+	end
 	if NO_IP_ALIAS == "1" then
 		extra = extra .. " -no-ip-alias"
 	end
@@ -713,11 +717,15 @@ if IS_SHUNT_NODE and not only_global then
 			if rdata.group ~= "cn" and is_file_nonzero(rdata.host_file) then
 				local domain_set_name = "psw-shunt-" .. rname
 				local expired_rule = ""
-				if rdata.serve_expired == "0" or rdata.serve_expired == "no" then
+				local extra = get_remote_rule_extra()
+				if rdata.serve_expired == "1" or rdata.serve_expired == "yes" then
+					expired_rule = ""
+					extra = extra:gsub("%%s*-no-serve-expired", "")
+				elseif rdata.serve_expired == "0" or rdata.serve_expired == "no" then
 					expired_rule = " -no-serve-expired"
 				end
 				local rule_ipv6 = (rdata.force_ipv4 == "1" or NO_PROXY_IPV6 == "1") and " -address #6" or ""
-				table.insert(config_lines, string.format("domain-rules /domain-set:%s/ -speed-check-mode none%s%s%s %s %s", domain_set_name, expired_rule, get_remote_rule_extra(), rule_ipv6, set_type, table.concat(sets, ",")))
+				table.insert(config_lines, string.format("domain-rules /domain-set:%s/ -speed-check-mode none%s%s%s %s %s", domain_set_name, expired_rule, extra, rule_ipv6, set_type, table.concat(sets, ",")))
 			end
 		end
 	else

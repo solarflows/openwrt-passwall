@@ -2298,6 +2298,15 @@ msgstr "SmartDNS 乐观缓存策略"
 msgid "Allow serving stale cache while revalidating asynchronously. Recommended for streaming media to prevent buffering pauses."
 msgstr "允许使用过期缓存并后台异步刷新。强烈建议流媒体规则开启，以彻底避免视频切片加载超时造成的卡顿断流。"
 
+msgid "SmartDNS Proxy Serve Expired (Optimistic Cache)"
+msgstr "SmartDNS 代理域名允许乐观缓存 (serve-expired)"
+
+msgid "Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."
+msgstr "允许代理及分流域名使用过期缓存并后台异步刷新。可极大提升网络微抖或节点切换时的网页浏览与流媒体播放流畅度。"
+
+msgid "Default (Follow global setting)"
+msgstr "默认 (跟随全局设置)"
+
 msgid "Force Enable (yes)"
 msgstr "强制允许 (yes)"
 

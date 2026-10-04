@@ -308,6 +308,12 @@ if api.is_finded("smartdns") then
 	o.rmempty = false
 	o:depends("smartdns_use_group", "1")
 
+	o = s_opt:option(Flag, "smartdns_serve_expired", translate("SmartDNS Proxy Serve Expired (Optimistic Cache)"),
+		translate("Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
+
 	o = s_opt:option(Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"),
 		translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."))
 	o.default = "1"

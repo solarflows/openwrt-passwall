@@ -60,6 +60,7 @@ config global_optimize
 	option smartdns_use_group '1'
 	option smartdns_split_shunt '0'
 	option smartdns_cache_mode '300'
+	option smartdns_serve_expired '1'
 	option smartdns_no_ip_alias '1'
 	option smartdns_no_rule_addr '1'
 
