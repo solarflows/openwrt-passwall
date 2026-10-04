@@ -59,6 +59,7 @@ local FLAG_PATH = TMP_PATH .. "/acl/" .. FLAG
 local TMP_CONF_FILE = FLAG_PATH .. "/smartdns.conf"
 local config_lines = {}
 local tmp_lines = {}
+local split_rules_map = {}
 local USE_GEOVIEW = api.uci_get_c("@global_rules[0]", "enable_geoview")
 local IS_SHUNT_NODE = api.uci_get_c(NODE, "protocol") == "_shunt"
 
@@ -109,13 +110,24 @@ if LOCAL_GROUP == "null" or LOCAL_GROUP == "" then
 	LOCAL_GROUP = nil
 else
 	local options = {
-		{ key = "auto_set_dnsmasq", arg_yes = "", arg_no = "" },
-		{ key = "force_aaaa_soa", config_key = "force_aaaa_soa", arg = "-address #6" },
-		{ key = "tcp_server", config_key = "tcp_server", arg = "-d no" },
-		{ key = "ipv6_server", config_key = "ipv6_server", arg = "-6" },
-		{ key = "dualstack_ip_selection", config_key = "dualstack_ip_selection", arg_yes = "-d yes", arg_no = "-d no", yes_no = true },
-		{ key = "speed_check_mode", config_key = "speed_check_mode", prefix = "-speed-check-mode " },
-		{ key = "response_mode", config_key = "response_mode", prefix = "-response-mode " }
+		{ key = "dualstack_ip_selection", config_key = "dualstack-ip-selection", yes_no = true, arg_yes = "-d yes", arg_no = "-d no", default = "yes" },
+		{ key = "speed_check_mode", config_key = "speed-check-mode", prefix = "-speed-check-mode ", default = "ping,tcp:80,tcp:443" },
+		{ key = "response_mode", config_key = "response-mode", prefix = "-response-mode ", default = "first-ping" },
+		{ key = "rr_ttl", config_key = "rr-ttl", prefix = "-rr-ttl " },
+		{ key = "rr_ttl_min", config_key = "rr-ttl-min", prefix = "-rr-ttl-min " },
+		{ key = "rr_ttl_max", config_key = "rr-ttl-max", prefix = "-rr-ttl-max " },
+		{
+			key = "force_aaaa_soa",
+			config_key = "force-qtype-SOA",
+			prefix = "-address ",
+			get_value = function(custom_config)
+				local soa = custom_config["force-qtype-SOA"]
+				return ((soa and soa:match("(^|%s)28(%s|$)"))
+					or custom_config["force-AAAA-SOA"] == "yes"
+					or api.uci_get("smartdns", "@smartdns[0]", "force_aaaa_soa") == "1")
+					and "#6" or nil
+			end
+		}
 	}
 	local custom_config = {}
 	local f_in = io.open("/etc/smartdns/custom.conf", "r")
@@ -341,7 +353,6 @@ if IS_SHUNT_NODE and not only_global then
 	shunt_black_host = CACHE_FLAG_PATH .. "/shunt_black_host"
 	local geosite_direct_arg, geosite_proxy_arg, geosite_black_arg = "", "", ""
 	local SHUNT_LIST = ""
-	local split_rules_map = {}
 
 	local t = api.uci_get_c(NODE)
 	local default_node_id = t["default_node"] or "_direct"
