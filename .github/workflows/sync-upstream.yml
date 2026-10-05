@@ -36,7 +36,7 @@ jobs:
       - name: Fetch upstream
         run: |
           git remote add upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git || git remote set-url upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git
-          git fetch upstream_remote --tags
+          git fetch upstream_remote --tags --force
           git fetch upstream_remote main
 
       - name: Check for upstream updates
@@ -63,7 +63,7 @@ jobs:
         run: |
           git checkout -B upstream upstream_remote/main
           git push origin upstream --force-with-lease
-          git push origin --tags 2>/dev/null || true
+          git push origin --tags --force 2>/dev/null || true
 
       - name: Rebase main branch onto upstream
         if: steps.check_update.outputs.has_update == 'true'
@@ -98,6 +98,20 @@ jobs:
                   echo "Auto-resolved Makefile version conflict."
                   git add luci-app-passwall/Makefile
                 fi
+              fi
+
+              # Auto-resolve downstream workflow customization conflict
+              if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/Auto compile with openwrt sdk\.yml"; then
+                git checkout --theirs ".github/workflows/Auto compile with openwrt sdk.yml"
+                git add ".github/workflows/Auto compile with openwrt sdk.yml"
+                echo "Auto-resolved workflow conflict using downstream version."
+              fi
+
+              # Auto-resolve translation conflict by combining entries
+              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
+                python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
+                git add luci-app-passwall/po/zh-cn/passwall.po
+                echo "Auto-resolved passwall.po translation conflict."
               fi
 
               REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
