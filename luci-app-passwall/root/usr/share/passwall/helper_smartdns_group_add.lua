@@ -452,9 +452,10 @@ if IS_SHUNT_NODE and not only_global then
 		resolve(geosite_black_arg,  shunt_black_host)
 		if SPLIT_SHUNT == "1" and USE_GEOVIEW == "1" and not USE_CACHE then
 			api.uci_foreach_c("shunt_rules", function(s)
+				if not split_rules_map[s[".name"]] then return end
 				local r_geosite = ""
 				local dlist = s.domain_list or ""
-				for line in string.gmatch(dlist, '[^\\r\\n]+') do
+				for line in string.gmatch(dlist, "[^\r\n]+") do
 					if line:find("geosite:") then
 						local gl = string.match(line, ":([^:]+)$")
 						if gl then r_geosite = r_geosite .. (r_geosite ~= "" and "," or "") .. gl end
@@ -462,7 +463,7 @@ if IS_SHUNT_NODE and not only_global then
 				end
 				local r_file = CACHE_FLAG_PATH .. "/shunt_" .. s[".name"] .. "_host"
 				local r_doms, r_lookup = {}, {}
-				for line in string.gmatch(dlist, '[^\\r\\n]+') do
+				for line in string.gmatch(dlist, "[^\r\n]+") do
 					if line ~= "" and not line:find("#") and not line:find("geosite:") and not line:find("regexp:") and not line:find("ext:") and not line:find("rule-set:") and not line:find("rs:") then
 						if line:find("domain:") or line:find("full:") then line = string.match(line, ":([^:]+)$") end
 						line = api.get_std_domain(line)
