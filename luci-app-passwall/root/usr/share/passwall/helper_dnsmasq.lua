@@ -135,6 +135,7 @@ function copy_instance(var)
 			if line:find("server=") == 1 then filter = true end
 			if line:find("port=") == 1 then filter = true end
 			if line:find("min%-cache%-ttl") == 1 then filter = true end
+			if line:find("filter%-AAAA") == 1 and api.uci_get_type("global_optimize", "fork_optimize", "1") == "1" then filter = true end
 			if line:find("conf%-dir=") == 1 then
 				filter = true
 				if TMP_DNSMASQ_PATH then

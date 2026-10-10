@@ -1279,7 +1279,7 @@ start_dns() {
 			echolog "  - 域名解析：使用SmartDNS，请确保配置正常。"
 			china_ng_listen="127.0.0.1#${SMARTDNS_LISTEN_PORT}"
 			echolog "  - SmartDNS(127.0.0.1#${SMARTDNS_LOCAL_PORT}) -> 国内分组(${group_domestic:-null})，SmartDNS(${china_ng_listen}) -> Dnsmasq"
-			china_ng_listen="${china_ng_listen},::1#${SMARTDNS_LISTEN_PORT}"
+			[ "$(config_n_get @global_optimize[0] fork_optimize 1)" != "1" ] && china_ng_listen="${china_ng_listen},::1#${SMARTDNS_LISTEN_PORT}"
 
 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
 			local smartdns_use_group=$(config_n_get @global_optimize[0] smartdns_use_group $(config_n_get @global[0] smartdns_use_group 1))
@@ -1297,7 +1297,8 @@ start_dns() {
 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 				-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 				-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0} \
-				-NO_IP_ALIAS ${smartdns_no_ip_alias} -CACHE_MODE "${smartdns_cache_mode}" -NO_RULE_ADDR ${smartdns_no_rule_addr} \n				-SPLIT_SHUNT ${smartdns_split_shunt:-0} -SERVE_EXPIRED ${smartdns_serve_expired:-1}
+				-NO_IP_ALIAS ${smartdns_no_ip_alias:-1} -CACHE_MODE "${smartdns_cache_mode:-300}" -NO_RULE_ADDR ${smartdns_no_rule_addr:-1} \
+				-SPLIT_SHUNT ${smartdns_split_shunt:-0} -SERVE_EXPIRED ${smartdns_serve_expired:-1}
 
 			restart_smartdns
 

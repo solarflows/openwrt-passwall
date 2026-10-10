@@ -445,9 +445,24 @@ load_acl() {
 							local GEOIP_CODE=""
 							local shunt_ids=$(uci show $CONFIG | grep "=shunt_rules" | awk -F '.' '{print $2}' | awk -F '=' '{print $1}')
 							local shunt_group=$(config_n_get $node shunt_group)
-							local shunt_id
+							local shunt_default_node=$(config_n_get $node default_node _direct)
+							local shunt_id shunt_target
 							for shunt_id in $shunt_ids; do
 								[ "${shunt_group}" != "$(config_n_get ${shunt_id} group)" ] && continue
+								if [ "$FORK_OPTIMIZE" = "1" ]; then
+									shunt_target=$(config_n_get $node ${shunt_id})
+									[ -z "$shunt_target" ] && continue
+									[ "$shunt_target" = "_default" ] && shunt_target="$shunt_default_node"
+									if [ "$shunt_target" = "_direct" ]; then
+										config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_WHITE_STATIC
+										config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_WHITE6_STATIC
+										continue
+									elif [ "$shunt_target" = "_blackhole" ]; then
+										config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLOCK_STATIC
+										config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLOCK6_STATIC
+										continue
+									fi
+								fi
 								config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $shunt_set_name_static
 								config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $shunt6_set_name_static
 								[ "$USE_GEOVIEW" = "1" ] && {
@@ -1182,9 +1197,24 @@ add_firewall_rule() {
 		local GEOIP_CODE=""
 		local shunt_ids=$(uci show $CONFIG | grep "=shunt_rules" | awk -F '.' '{print $2}' | awk -F '=' '{print $1}')
 		local shunt_group=$(config_n_get $NODE shunt_group)
-		local shunt_id
+		local shunt_default_node=$(config_n_get $NODE default_node _direct)
+		local shunt_id shunt_target
 		for shunt_id in $shunt_ids; do
 			[ "${shunt_group}" != "$(config_n_get ${shunt_id} group)" ] && continue
+			if [ "$FORK_OPTIMIZE" = "1" ]; then
+				shunt_target=$(config_n_get $NODE ${shunt_id})
+				[ -z "$shunt_target" ] && continue
+				[ "$shunt_target" = "_default" ] && shunt_target="$shunt_default_node"
+				if [ "$shunt_target" = "_direct" ]; then
+					config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_WHITE_STATIC
+					config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_WHITE6_STATIC
+					continue
+				elif [ "$shunt_target" = "_blackhole" ]; then
+					config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_BLOCK_STATIC
+					config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_BLOCK6_STATIC
+					continue
+				fi
+			fi
 			config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv4_REGEX" | insert_nftset $NFTSET_SHUNT_STATIC
 			config_n_get $shunt_id ip_list | sed 's/#.*//' | grep -E "$IPv6_REGEX" | insert_nftset $NFTSET_SHUNT6_STATIC
 			[ "$USE_GEOVIEW" = "1" ] && {

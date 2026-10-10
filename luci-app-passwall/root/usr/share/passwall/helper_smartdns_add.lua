@@ -151,7 +151,8 @@ else
 			prefix = "-address ",
 			get_value = function(custom_config)
 				local soa = custom_config["force-qtype-SOA"]
-				return ((soa and soa:match("(^|%s)28(%s|$)"))
+				local has_28 = soa and ((" " .. soa .. " "):find("%s28%s") ~= nil)
+				return (has_28
 					or custom_config["force-AAAA-SOA"] == "yes"
 					or api.uci_get("smartdns", "@smartdns[0]", "force_aaaa_soa") == "1")
 					and "#6" or "-6"
