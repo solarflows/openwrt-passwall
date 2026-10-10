@@ -67,6 +67,8 @@ jobs:
 
       - name: Rebase main branch onto upstream
         if: steps.check_update.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git checkout main
 
@@ -74,10 +76,10 @@ jobs:
           PREV_UPSTREAM="${{ steps.check_update.outputs.prev_upstream_sha }}"
           if [ -n "$PREV_UPSTREAM" ] && git merge-base --is-ancestor "$PREV_UPSTREAM" main 2>/dev/null; then
             echo "Rebasing main onto upstream with boundary: $PREV_UPSTREAM"
-            REBASE_CMD="git rebase --onto upstream $PREV_UPSTREAM main"
+            REBASE_CMD="git rebase --empty=drop --onto upstream $PREV_UPSTREAM main"
           else
             echo "Rebasing main onto upstream"
-            REBASE_CMD="git rebase upstream"
+            REBASE_CMD="git rebase --empty=drop upstream"
           fi
 
           if ! eval "$REBASE_CMD"; then
@@ -85,7 +87,7 @@ jobs:
 
             resolve_makefile() {
               [ ! -f "luci-app-passwall/Makefile" ] && return 1
-              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); sys.exit(0 if m and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m.group(1).strip()}\nPKG_RELEASE:=2', c, flags=re.S)) else 1)"
+              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); sys.exit(0 if m and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m.group(1).strip()}\nPKG_RELEASE:=1', c, flags=re.S)) else 1)"
             }
 
             while [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; do
@@ -107,6 +109,13 @@ jobs:
                 echo "Auto-resolved workflow conflict using downstream version."
               fi
 
+              # Auto-resolve status.htm IP check card anchor conflict while keeping upstream changes elsewhere
+              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/view/passwall/global/status\.htm"; then
+                python3 -c "import re, sys; p='luci-app-passwall/luasrc/view/passwall/global/status.htm'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(2) if 'check_ip_info' in m.group(2) else m.group(1), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+                git add luci-app-passwall/luasrc/view/passwall/global/status.htm
+                echo "Auto-resolved status.htm conflict preserving check_ip_info."
+              fi
+
               # Auto-resolve translation conflict by combining entries
               if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
                 python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
@@ -116,7 +125,11 @@ jobs:
 
               REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
               if [ -z "$REMAINING_CONFLICTS" ]; then
-                GIT_EDITOR=true git rebase --continue || true
+                if git diff --cached --quiet; then
+                  git rebase --skip || true
+                else
+                  GIT_EDITOR=true git rebase --continue || true
+                fi
               else
                 echo "::error::Substantive code conflict detected! Aborting rebase to keep main branch clean."
                 git diff
@@ -124,6 +137,21 @@ jobs:
                 exit 1
               fi
             done
+          fi
+
+          # Auto-bump PKG_RELEASE if current Makefile version matches or lags behind latest GitHub release
+          REMOTE_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
+          CUR_REL=$(awk -F ':=' '/^PKG_RELEASE:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
+          if [ -n "$REMOTE_TAG" ] && [ "${REMOTE_TAG%-*}" = "$CUR_VER" ]; then
+            REMOTE_REL="${REMOTE_TAG##*-}"
+            if [ "$CUR_REL" -le "$REMOTE_REL" ] 2>/dev/null; then
+              NEXT_REL=$((REMOTE_REL + 1))
+              sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${NEXT_REL}/" luci-app-passwall/Makefile
+              git add luci-app-passwall/Makefile
+              git commit -m "build: bump PKG_RELEASE to ${NEXT_REL} for upstream sync"
+              echo "Auto-bumped PKG_RELEASE to ${NEXT_REL} (previous release: ${REMOTE_TAG})."
+            fi
           fi
 
           echo "Rebase completed successfully."
