@@ -358,7 +358,7 @@ run_socks() {
 	elif [ "${log_file#"$TMP_PATH/"}" = "$log_file" ]; then
 		log_file=$TMP_PATH/$log_file
 	fi
-	loglevel=${loglevel:-warn}
+	loglevel=${loglevel:-$(config_n_get @global[0] loglevel "warn")}
 
 	local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
 	local remarks=$(config_n_get $node remarks)
@@ -428,6 +428,13 @@ run_socks() {
 		json_add_string "server_port" "${server_port}"
 		json_add_string "server_username" "${socks_username}"
 		json_add_string "server_password" "${socks_password}"
+		if [ "$log_file" = "/dev/null" ]; then
+			json_add_string "log" "0"
+		else
+			json_add_string "log" "1"
+			json_add_string "logfile" "${log_file}"
+		fi
+		json_add_string "loglevel" "$loglevel"
 		if [ -n "${SINGBOX_BIN}" ]; then
 			type="sing-box"
 			local bin="${SINGBOX_BIN}"
@@ -875,13 +882,14 @@ start_socks() {
 				local config_file="${id}.json"
 				local log_file="${id}.log"
 				local log=$(config_n_get $id log 1)
+				local loglevel=$(config_n_get $id loglevel)
 				[ "$log" = "0" ] && log_file=""
 				local http_port=$(config_n_get $id http_port 0)
 				local http_config_file="${id}_http.json"
 				local enable_autoswitch=$(config_n_get $id enable_autoswitch 0)
 				local no_rec=0
 				[ "$enable_autoswitch" = "1" ] && no_rec=1
-				NO_REC_PROCESS=$no_rec $APP_PATH/app.sh run_socks flag=$id node=$node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file
+				NO_REC_PROCESS=$no_rec $APP_PATH/app.sh run_socks flag=$id node=$node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file loglevel=$loglevel
 				set_cache_var "${id}" "$node"
 				#自动切换逻辑
 				[ "$enable_autoswitch" = "1" ] && { $APP_PATH/socks_auto_switch.sh ${id} > /dev/null 2>&1 & }
@@ -917,11 +925,12 @@ socks_node_switch() {
 		local config_file="${flag}.json"
 		local log_file="${flag}.log"
 		local log=$(config_n_get $flag log 1)
+		local loglevel=$(config_n_get $flag loglevel)
 		[ "$log" = "0" ] && log_file=""
 		local http_port=$(config_n_get $flag http_port 0)
 		local http_config_file="${flag}_http.json"
 		LOG_FILE="/dev/null"
-		run_socks flag=$flag node=$new_node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file
+		run_socks flag=$flag node=$new_node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file loglevel=$loglevel
 		sleep 2s
 		[ "$(check_port_exists "$port" tcp)" = "0" ] && return 1
 		set_cache_var "${flag}" "$new_node"
