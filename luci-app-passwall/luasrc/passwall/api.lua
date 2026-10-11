@@ -36,8 +36,18 @@ function log(...)
 	end
 end
 
+local _is_old_uci_cache = nil
 function is_old_uci()
-	return sys.call("grep -E 'require[ \t]*\"uci\"' /usr/lib/lua/luci/model/uci.lua >/dev/null 2>&1") == 0
+	if _is_old_uci_cache ~= nil then return _is_old_uci_cache end
+	local f = io.open("/usr/lib/lua/luci/model/uci.lua", "r")
+	if f then
+		local content = f:read("*a")
+		f:close()
+		_is_old_uci_cache = (content:find('require%s+"uci"') ~= nil)
+	else
+		_is_old_uci_cache = false
+	end
+	return _is_old_uci_cache
 end
 
 function uci_del(config, section, option)
@@ -696,7 +706,7 @@ function get_valid_nodes()
 	return nodes
 end
 
-function get_node_list()
+function get_node_list(nodes_table)
 	local node_list = {
 		socks_list = {},
 		normal_list = {},
@@ -710,7 +720,7 @@ function get_node_list()
 			}
 		end
 	end)
-	for k, e in ipairs(get_valid_nodes()) do
+	for k, e in ipairs(nodes_table or get_valid_nodes()) do
 		if e.node_type == "normal" then
 			node_list.normal_list[#node_list.normal_list + 1] = {
 				id = e[".name"],
@@ -835,18 +845,42 @@ function get_customed_path(e)
 	return uci_get_c("@global_app[0]", e .. "_file")
 end
 
+local _finded_cache = {}
 function finded_com(e)
-	local bin = get_app_path(e)
-	if not bin then return end
-	local s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
-	if s == "" then
-		s = nil
+	if _finded_cache["com_" .. e] ~= nil then
+		return _finded_cache["com_" .. e]
 	end
+	local bin = get_app_path(e)
+	local s = nil
+	if bin and bin ~= "" then
+		if fs.access(bin, "rwx", "rx", "rx") or fs.access(bin) then
+			s = bin
+		else
+			s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
+			if s == "" then s = nil end
+		end
+	end
+	_finded_cache["com_" .. e] = s
 	return s
 end
 
 function finded(e)
-	return luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	if _finded_cache["bin_" .. e] ~= nil then
+		return _finded_cache["bin_" .. e]
+	end
+	local s = ""
+	for _, prefix in ipairs({"/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/"}) do
+		local p = prefix .. e
+		if fs.access(p, "rwx", "rx", "rx") or fs.access(p) then
+			s = p
+			break
+		end
+	end
+	if s == "" then
+		s = luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	end
+	_finded_cache["bin_" .. e] = s
+	return s
 end
 
 function is_finded(e)
