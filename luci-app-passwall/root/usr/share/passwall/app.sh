@@ -1279,16 +1279,26 @@ start_dns() {
 			echolog "  - 域名解析：使用SmartDNS，请确保配置正常。"
 			china_ng_listen="127.0.0.1#${SMARTDNS_LISTEN_PORT}"
 			echolog "  - SmartDNS(127.0.0.1#${SMARTDNS_LOCAL_PORT}) -> 国内分组(${group_domestic:-null})，SmartDNS(${china_ng_listen}) -> Dnsmasq"
-			china_ng_listen="${china_ng_listen},::1#${SMARTDNS_LISTEN_PORT}"
+			[ "$(config_n_get @global_optimize[0] fork_optimize 1)" != "1" ] && china_ng_listen="${china_ng_listen},::1#${SMARTDNS_LISTEN_PORT}"
 
 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
-			lua $APP_PATH/helper_smartdns_add.lua -FLAG "default" -SMARTDNS_CONF "/tmp/etc/smartdns/$CONFIG.conf" \
+			local smartdns_use_group=$(config_n_get @global_optimize[0] smartdns_use_group $(config_n_get @global[0] smartdns_use_group 1))
+			local smartdns_split_shunt=$(config_n_get @global_optimize[0] smartdns_split_shunt 0)
+			local smartdns_no_ip_alias=$(config_n_get @global_optimize[0] smartdns_no_ip_alias $(config_n_get @global[0] smartdns_no_ip_alias 1))
+			local smartdns_cache_mode=$(config_n_get @global_optimize[0] smartdns_cache_mode $(config_n_get @global[0] smartdns_cache_mode "300"))
+			local smartdns_no_rule_addr=$(config_n_get @global_optimize[0] smartdns_no_rule_addr $(config_n_get @global[0] smartdns_no_rule_addr 1))
+			local smartdns_serve_expired=$(config_n_get @global_optimize[0] smartdns_serve_expired 1)
+			local smartdns_script="helper_smartdns_add.lua"
+			[ "$smartdns_use_group" = "1" ] && smartdns_script="helper_smartdns_group_add.lua"
+			lua $APP_PATH/${smartdns_script} -FLAG "default" -SMARTDNS_CONF "/tmp/etc/smartdns/$CONFIG.conf" \
 				-LISTEN_PORT ${SMARTDNS_LISTEN_PORT} -LOCAL_PORT ${SMARTDNS_LOCAL_PORT} \
 				-LOCAL_GROUP ${group_domestic:-null} -REMOTE_GROUP "passwall_proxy" -REMOTE_PROXY_SERVER ${GLOBAL_SOCKS_server} -USE_DEFAULT_DNS "${USE_DEFAULT_DNS:-direct}" \
 				-REMOTE_DNS ${smartdns_remote_dns} -DNS_MODE ${DNS_MODE:-socks} -TUN_DNS ${TUN_DNS} \
 				-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 				-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
-				-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0}
+				-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0} \
+				-NO_IP_ALIAS ${smartdns_no_ip_alias:-1} -CACHE_MODE "${smartdns_cache_mode:-300}" -NO_RULE_ADDR ${smartdns_no_rule_addr:-1} \
+				-SPLIT_SHUNT ${smartdns_split_shunt:-0} -SERVE_EXPIRED ${smartdns_serve_expired:-1}
 
 			restart_smartdns
 
@@ -1769,7 +1779,7 @@ stop() {
 	done
 	busybox pgrep -af "${CONFIG}/monitor\.sh" | xargs -r kill -9 >/dev/null 2>&1
 	busybox pgrep -f "sleep.*(6s|9s|58s)" | xargs -r kill -9 >/dev/null 2>&1
-	busybox pgrep -af "${CONFIG}/" | awk '! /app\.sh|subscribe\.lua|rule_update\.lua|tasks\.sh|server_app\.lua|ujail/{print $1}' | xargs -r kill -9 >/dev/null 2>&1
+	busybox pgrep -af "${CONFIG}/" | awk -v CFG="${CONFIG}" '! /app\.sh|subscribe\.lua|rule_update\.lua|tasks\.sh|server_app\.lua|ujail/ && $0 !~ ("init\\.d/" CFG) {print $1}' | xargs -r kill -9 >/dev/null 2>&1
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
