@@ -19,6 +19,43 @@ local UrlEncode, UrlDecode = api.UrlEncode, api.UrlDecode
 local fs = api.fs
 local uci, uci_get, uci_set, uci_del, uci_foreach, uci_save = api.uci, api.uci_get_c, api.uci_set_c, api.uci_del_c, api.uci_foreach_c, api.uci_save_c
 
+if (uci_get("@global_optimize[0]", "fork_optimize") or uci_get("@global_forwarding[0]", "fork_optimize") or "1") == "1" then
+	local native_uci = require("uci").cursor()
+	uci = native_uci
+	local mt = getmetatable(native_uci)
+	mt.section = function(self, config, stype, name, values)
+		local sid = name or api.gen_random_char()
+		self:set(config, sid, stype)
+		if values then
+			for k, v in pairs(values) do self:set(config, sid, k, v) end
+		end
+		return sid
+	end
+	uci_get = function(section, option)
+		if not section then return uci:get_all(c_config)
+		elseif option then return uci:get(c_config, section, option)
+		else return uci:get_all(c_config, section) end
+	end
+	uci_set = function(section, option, value)
+		if type(value) == "number" then value = tostring(value) end
+		if value and #value > 0 then
+			if option then return uci:set(c_config, section, option, value)
+			else return uci:set(c_config, section, value) end
+		else
+			if option then return uci:delete(c_config, section, option)
+			else return uci:delete(c_config, section) end
+		end
+	end
+	uci_del = function(section, option)
+		if option then return uci:delete(c_config, section, option)
+		else return uci:delete(c_config, section) end
+	end
+	uci_foreach = function(stype, func) return uci:foreach(c_config, stype, func) end
+	uci_save = function(commit)
+		if commit then uci:commit(c_config) else uci:save(c_config) end
+	end
+end
+
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
 local tinsert = table.insert
@@ -1813,6 +1850,7 @@ local function curl(url, file, ua, mode)
 	curl_args[#curl_args + 1] = '-c "' .. cookie_file .. '" -b "' .. cookie_file .. '"'
 
 	local return_code, result
+	local http_code, header_str = 0, ""
 	if mode == "direct" then
 		return_code, result = api.curl_direct(url, file, curl_args)
 	elseif mode == "proxy" then
@@ -2332,5 +2370,5 @@ end
 update_lock:close()
 if restart_required then
 	local action = arg[3] == "cron" and " cron" or ""
-	luci.sys.call("/etc/init.d/passwall restart" .. action .. " > /dev/null 2>&1 &")
+	luci.sys.call("(command -v setsid >/dev/null 2>&1 && setsid /etc/init.d/passwall restart" .. action .. " || nohup /etc/init.d/passwall restart" .. action .. ") > /dev/null 2>&1 &")
 end
