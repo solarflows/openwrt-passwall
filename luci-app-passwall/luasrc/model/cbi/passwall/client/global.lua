@@ -128,6 +128,7 @@ if (has_singbox or has_xray) and #nodes_table > 0 then
 				verify_option = s.fields["node"],
 				tab = "Shunt",
 				tab_desc = translate("Shunt Rule"),
+				node_list = api.get_node_list(nodes_table),
 			})
 		end
 	else
@@ -145,13 +146,12 @@ o.default = 1070
 o.placeholder = 1070
 o.datatype = "range(1,65535)"
 o:depends({ node = "", ['!reverse'] = true })
---[[
 if has_singbox or has_xray then
 	o = s:taboption("Main", Value, "node_http_port", translate("Node") .. " HTTP " .. translate("Listen Port") .. " " .. translate("0 is not use"))
-	o.default = 0
+	o.default = 10708
 	o.datatype = "port"
+	o:depends({ node = "", ['!reverse'] = true })
 end
-]]--
 o = s:taboption("Main", Flag, "node_socks_bind_local", translate("Node") .. " Socks " .. translate("Bind Local"), translate("When selected, it can only be accessed localhost."))
 o.default = "1"
 o:depends({ node = "", ['!reverse'] = true })
@@ -644,6 +644,18 @@ o.cfgvalue = function(t, n)
 	return s
 end
 o:depends("log_chinadns_ng", "1")
+
+o = s:taboption("log", Flag, "advanced_log_feature", translate("Advanced log feature"), translate("For professionals only."))
+o.default = "0"
+o = s:taboption("log", Flag, "sys_log", translate("Logging to system log"), translate("Logging to the system log for more advanced functions. For example, send logs to a dedicated log server."))
+o:depends("advanced_log_feature", "1")
+o.default = "0"
+o = s:taboption("log", Value, "persist_log_path", translate("Persist log file directory"), translate("The path to the directory used to store persist log files, the \"/\" at the end can be omitted. Leave it blank to disable this feature."))
+o:depends({ ["advanced_log_feature"] = 1, ["sys_log"] = 0 })
+o = s:taboption("log", Value, "log_event_filter", translate("Log Event Filter"), translate("Support regular expression."))
+o:depends("advanced_log_feature", "1")
+o = s:taboption("log", Value, "log_event_cmd", translate("Shell Command"), translate("Shell command to execute, replace log content with %s."))
+o:depends("advanced_log_feature", "1")
 
 o = s:taboption("log", DummyValue, "_log_tips", "　")
 o.rawhtml = true
