@@ -578,7 +578,8 @@
 
 		// 分组项
 		data.group_order.forEach(gname => {
-			const items = data.groups[gname];
+			const items = (data.groups && data.groups[gname]) || (window.lv_groups_pool && window.lv_groups_pool[gname]);
+			if (!items) return;
 
 			html += `
 			<div class="lv-group" data-group="${lv_idSafe(gname)}" style="margin-bottom:8px;">
