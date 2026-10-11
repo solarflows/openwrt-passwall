@@ -2151,6 +2151,8 @@ function gen_config(var)
 end
 
 function gen_proto_config(var)
+	local log = var["log"] or "0"
+	local loglevel = var["loglevel"] or "warning"
 	local local_socks_address = var["local_socks_address"] or "0.0.0.0"
 	local local_socks_port = var["local_socks_port"]
 	local local_socks_username = var["local_socks_username"]
@@ -2250,7 +2252,7 @@ function gen_proto_config(var)
 
 	local config = {
 		log = {
-			loglevel = "warning"
+			loglevel = (log == "1") and get_log_level(loglevel) or "warning"
 		},
 		-- 传入连接
 		inbounds = inbounds,

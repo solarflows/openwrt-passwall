@@ -2482,6 +2482,9 @@ function gen_config(var)
 end
 
 function gen_proto_config(var)
+	local log = var["log"] or "0"
+	local loglevel = var["loglevel"] or "warn"
+	local logfile = var["logfile"] or "/dev/null"
 	local local_socks_address = var["local_socks_address"] or "0.0.0.0"
 	local local_socks_port = var["local_socks_port"]
 	local local_socks_username = var["local_socks_username"]
@@ -2548,9 +2551,10 @@ function gen_proto_config(var)
 
 	local config = {
 		log = {
-			disabled = true,
-			level = "warn",
+			disabled = log == "0" and true or false,
+			level = get_log_level(loglevel),
 			timestamp = true,
+			output = logfile ~= "/dev/null" and logfile or nil,
 		},
 		-- 传入连接
 		inbounds = inbounds,
