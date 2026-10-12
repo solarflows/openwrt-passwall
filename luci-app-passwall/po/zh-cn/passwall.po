@@ -1652,6 +1652,36 @@ msgstr "启用节点日志"
 msgid "Log Level"
 msgstr "日志等级"
 
+msgid "Advanced log feature"
+msgstr "高级日志功能"
+
+msgid "For professionals only."
+msgstr "仅限专业人士使用。"
+
+msgid "Persist log file directory"
+msgstr "持久性日志文件目录"
+
+msgid "The path to the directory used to store persist log files, the \"/\" at the end can be omitted. Leave it blank to disable this feature."
+msgstr "用来存储持久性日志文件的目录路径，末尾的 “/” 可以省略。留空以禁用此功能。"
+
+msgid "Logging to system log"
+msgstr "记录到系统日志"
+
+msgid "Logging to the system log for more advanced functions. For example, send logs to a dedicated log server."
+msgstr "将日志记录到系统日志，以实现更加高级的功能。例如，把日志发送到专门的日志服务器。"
+
+msgid "Log Event Filter"
+msgstr "日志事件过滤器"
+
+msgid "Support regular expression."
+msgstr "支持正则表达式。"
+
+msgid "Shell Command"
+msgstr "Shell 命令"
+
+msgid "Shell command to execute, replace log content with %s."
+msgstr "要执行的 Shell 命令，用 %s 代替日志内容。"
+
 msgid "Not enabled log"
 msgstr "未启用日志"
 
@@ -2189,3 +2219,102 @@ msgstr "自定义 HTTP 请求头"
 
 msgid "MASQUE Address"
 msgstr "MASQUE 隧道地址"
+
+msgid "Fork Performance Toolkit"
+msgstr "Fork 性能优化套件"
+
+msgid "Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."
+msgstr "启用 Fork 专属优化脚本：包含出站规则链置顶、毫秒级增量节点过滤、原生 C 库订阅极速解析 (提速 750 倍) 及转发参数调优。"
+
+msgid "NFTables Rules Optimization"
+msgstr "NFTables 规则优化"
+
+msgid "Optimize nftables rule order and rp_filter for performance."
+msgstr "优化 nftables 出站链规则顺序与 rp_filter 反向过滤参数以提升转发与代理性能。"
+
+msgid "SmartDNS Disable IP Alias (-no-ip-alias)"
+msgstr "SmartDNS 代理域名禁用 IP 别名 (-no-ip-alias)"
+
+msgid "Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."
+msgstr "在为代理域名生成 SmartDNS 规则时追加 -no-ip-alias，忽略全局 ip-alias 别名映射，防止分流与防火墙集合匹配异常。"
+
+msgid "SmartDNS Group Rules Mode (group-begin/match)"
+msgstr "启用 SmartDNS 规则组模式 (group-begin/match)"
+
+msgid "Use modern group-based sandbox architecture (group-begin/group-match) to isolate proxy DNS resolution."
+msgstr "使用 SmartDNS 现代规则组沙盒架构 (group-begin/group-match) 独立隔离代理 DNS 解析流。"
+
+msgid "SmartDNS Proxy Cache Mode"
+msgstr "SmartDNS 代理域名缓存时效策略"
+
+msgid "Default (SmartDNS Global Policy)"
+msgstr "默认时效 (跟随 SmartDNS 全局策略)"
+
+msgid "Short TTL (5 Minutes / 300s, Recommended)"
+msgstr "短时效缓存 (5 分钟 / 300秒，推荐)"
+
+msgid "Very Short TTL (1 Minute / 60s)"
+msgstr "极短时效 (1 分钟 / 60秒)"
+
+msgid "Disable Cache (-no-cache)"
+msgstr "关闭缓存 (每次实时穿透，-no-cache)"
+
+msgid "Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency."
+msgstr "控制代理域名的 DNS 记录缓存时效。较短的时效可以在兼顾低延迟的同时，在节点切换或动态 CDN 变动时即时平滑刷新。"
+
+msgid "SmartDNS Skip Static Address Rules (-no-rule-addr)"
+msgstr "SmartDNS 代理域名跳过静态地址规则 (-no-rule-addr)"
+
+msgid "Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."
+msgstr "在 SmartDNS 中对代理域名跳过 address 静态重定向规则，防止自定义内网劫持或去广告规则误拦截代理流量。"
+
+msgid "Optimization & SmartDNS Settings"
+msgstr "性能与 SmartDNS 增强设置"
+
+msgid "SmartDNS Per-Rule Shunt Strategy"
+msgstr "SmartDNS 分流规则独立策略"
+
+msgid "Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."
+msgstr "为分流规则启用原子化域名集与独立 DNS 分组/缓存策略。"
+
+msgid "SmartDNS Resolve Group"
+msgstr "SmartDNS 解析分组"
+
+msgid "Specify the SmartDNS upstream group used for this shunt rule."
+msgstr "指定该分流规则使用的 SmartDNS 上游分组。"
+
+msgid "Default (Follow node destination)"
+msgstr "默认 (跟随分流落地节点)"
+
+msgid "Domestic Group (cn) - Low Latency & High Speed"
+msgstr "国内高速组 (cn) - 直连加速/Steam专属"
+
+msgid "Proxy Sandbox Group (passwall_proxy) - Anti-Pollution"
+msgstr "代理沙盒组 (passwall_proxy) - 海外防污染"
+
+msgid "SmartDNS Serve Expired (Optimistic Cache)"
+msgstr "SmartDNS 乐观缓存策略"
+
+msgid "Allow serving stale cache while revalidating asynchronously. Recommended for streaming media to prevent buffering pauses."
+msgstr "允许使用过期缓存并后台异步刷新。强烈建议流媒体规则开启，以彻底避免视频切片加载超时造成的卡顿断流。"
+
+msgid "SmartDNS Proxy Serve Expired (Optimistic Cache)"
+msgstr "SmartDNS 代理域名允许乐观缓存 (serve-expired)"
+
+msgid "Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."
+msgstr "允许代理及分流域名使用过期缓存并后台异步刷新。可极大提升网络微抖或节点切换时的网页浏览与流媒体播放流畅度。"
+
+msgid "Default (Follow global setting)"
+msgstr "默认 (跟随全局设置)"
+
+msgid "Force Enable (yes)"
+msgstr "强制允许 (yes)"
+
+msgid "Force Disable (no)"
+msgstr "强制禁用 (no)"
+
+msgid "SmartDNS Disable IPv6 Resolution"
+msgstr "SmartDNS 屏蔽 IPv6 解析"
+
+msgid "Block AAAA records (-address #6) for this rule, forcing IPv4."
+msgstr "针对该分流规则拦截 AAAA 记录 (-address #6)，强制使用 IPv4。"
