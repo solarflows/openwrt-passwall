@@ -261,4 +261,26 @@ ip_list.description = "<br /><ul>"
 
 o = s:option(Flag, "invert", "Invert", translate("Invert match result.") .. " " .. translate("Only support Sing-Box."))
 
+local is_smartdns = (api.uci_get_c("@global[0]", "dns_shunt") == "smartdns")
+local use_group = ((api.uci_get_c("@global_optimize[0]", "smartdns_use_group") or api.uci_get_c("@global[0]", "smartdns_use_group") or "1") == "1")
+local split_shunt = ((api.uci_get_c("@global_optimize[0]", "smartdns_split_shunt") or "0") == "1")
+
+if is_smartdns and use_group and split_shunt then
+	o = s:option(ListValue, "smartdns_group", translate("SmartDNS Resolve Group"), translate("Specify the SmartDNS upstream group used for this shunt rule."))
+	o:value("", translate("Default (Follow node destination)"))
+	o:value("cn", translate("Domestic Group (cn) - Low Latency & High Speed"))
+	o:value("passwall_proxy", translate("Proxy Sandbox Group (passwall_proxy) - Anti-Pollution"))
+	o.default = ""
+
+	o = s:option(ListValue, "smartdns_serve_expired", translate("SmartDNS Serve Expired (Optimistic Cache)"), translate("Allow serving stale cache while revalidating asynchronously. Recommended for streaming media to prevent buffering pauses."))
+	o:value("", translate("Default (Follow global setting)"))
+	o:value("1", translate("Force Enable (yes)"))
+	o:value("0", translate("Force Disable (no)"))
+	o.default = ""
+
+	o = s:option(Flag, "smartdns_force_ipv4", translate("SmartDNS Disable IPv6 Resolution"), translate("Block AAAA records (-address #6) for this rule, forcing IPv4."))
+	o.default = "0"
+	o.rmempty = false
+end
+
 return api.return_map(m)
