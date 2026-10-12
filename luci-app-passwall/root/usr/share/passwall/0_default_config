@@ -41,6 +41,7 @@ config global_forwarding
 	option udp_redir_ports '1:65535'
 	option accept_icmp '0'
 	option prefer_nft '1'
+	option fork_optimize '1'
 	option tcp_proxy_way 'redirect'
 	option ipv6_tproxy '0'
 
@@ -48,6 +49,16 @@ config global_xray
 	option sniffing_override_dest '0'
 
 config global_singbox
+
+config global_optimize
+	option fork_optimize '1'
+	option nft_optimize '1'
+	option smartdns_use_group '1'
+	option smartdns_split_shunt '0'
+	option smartdns_cache_mode '300'
+	option smartdns_serve_expired '1'
+	option smartdns_no_ip_alias '1'
+	option smartdns_no_rule_addr '1'
 
 config global_other
 	option auto_detection_time 'tcping'
