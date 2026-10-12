@@ -1278,7 +1278,8 @@ start_dns() {
 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
 			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${china_ng_local_dns} -> 分组(direct)"
 
-			lua "$APP_PATH/helper_smartdns_add.lua" -FLAG "default" \
+			if ! fork_optimize_smartdns; then
+				lua "$APP_PATH/helper_smartdns_add.lua" -FLAG "default" \
 				-LISTEN_PORT "$smartdns_listen_port" -LOCAL_DNS "$china_ng_local_dns" -DNS_REDIRECT "${DNS_REDIRECT}" \
 				-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
 				-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \
@@ -1295,9 +1296,11 @@ start_dns() {
 				echolog "  * SmartDNS 配置生成失败！"
 				return 1
 			}
+			fi
 			ln_run "$smartdns_bin" smartdns "/dev/null" -f -c "$smartdns_config" -p "${GLOBAL_ACL_PATH}/smartdns.pid"
 			china_ng_listen="127.0.0.1#${smartdns_listen_port},::1#${smartdns_listen_port}"
 			USE_DEFAULT_DNS="chinadns_ng"
+
 		else
 			DNS_SHUNT="dnsmasq"
 			echolog "  * 未安装SmartDNS，默认使用Dnsmasq进行域名解析！"
@@ -1367,7 +1370,7 @@ start_dns() {
 		lua $APP_PATH/helper_dnsmasq.lua stretch
 		lua $APP_PATH/helper_dnsmasq.lua add_rule -FLAG "default" -TMP_DNSMASQ_PATH ${GLOBAL_DNSMASQ_CONF_PATH} -DNSMASQ_CONF_FILE ${GLOBAL_DNSMASQ_CONF} \
 			-DEFAULT_DNS ${DEFAULT_DNS} -LOCAL_DNS ${LOCAL_DNS} -TUN_DNS ${DNSMASQ_TUN_DNS} \
-			-USE_DEFAULT_DNS "${USE_DEFAULT_DNS:-direct}" -CHINADNS_DNS ${china_ng_listen:-0} \
+			-USE_DEFAULT_DNS "${smartdns_default_dns}" -CHINADNS_DNS ${china_ng_listen:-0} \
 			-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 			-NODE ${NODE} -DEFAULT_PROXY_MODE ${TCP_PROXY_MODE} -NO_PROXY_IPV6 ${DNSMASQ_FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 			-NO_LOGIC_LOG ${NO_LOGIC_LOG:-0}
@@ -1378,6 +1381,8 @@ start_dns() {
 	elif [ "${DNS_SHUNT}" = "smartdns" ]; then
 		# SmartDNS reads DHCP leases itself; no forwarding dnsmasq instance is needed.
 		DNS_REDIRECT_PORT=${smartdns_listen_port}
+		GLOBAL_DNSMASQ_PORT=""
+
 		set_cache_var "ACL_default_dns_port" "${DNS_REDIRECT_PORT}"
 	else
 		#Run a copy dnsmasq instance, DNS hijack for that need proxy devices.
@@ -1386,7 +1391,7 @@ start_dns() {
 		GLOBAL_DNSMASQ_CONF_PATH=${GLOBAL_ACL_PATH}/dnsmasq.d
 		lua $APP_PATH/helper_dnsmasq.lua add_rule -FLAG "default" -TMP_DNSMASQ_PATH ${GLOBAL_DNSMASQ_CONF_PATH} -DNSMASQ_CONF_FILE ${GLOBAL_DNSMASQ_CONF} \
 			-LISTEN_PORT ${GLOBAL_DNSMASQ_PORT} -DEFAULT_DNS ${DEFAULT_DNS} -LOCAL_DNS ${LOCAL_DNS} -TUN_DNS ${DNSMASQ_TUN_DNS} \
-			-USE_DEFAULT_DNS "${USE_DEFAULT_DNS:-direct}" -CHINADNS_DNS ${china_ng_listen:-0} \
+			-USE_DEFAULT_DNS "${smartdns_default_dns}" -CHINADNS_DNS ${china_ng_listen:-0} \
 			-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 			-NODE ${NODE} -DEFAULT_PROXY_MODE ${TCP_PROXY_MODE} -NO_PROXY_IPV6 ${DNSMASQ_FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 			-NO_LOGIC_LOG ${NO_LOGIC_LOG:-0}
@@ -1425,7 +1430,7 @@ acl_app() {
 		socks_port=11100
 		redir_port=11200
 		dns_port=11300
-		dnsmasq_port=${GLOBAL_DNSMASQ_PORT:-11400}
+		dnsmasq_port=11400
 		chinadns_port=11500
 		for sid in $items; do
 			[ "$(config_n_get $sid enabled)" = "1" ] || continue
@@ -1787,8 +1792,9 @@ stop() {
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
 	stop_crontab $1
-	rm -rf $GLOBAL_DNSMASQ_CONF
-	rm -rf $GLOBAL_DNSMASQ_CONF_PATH
+	[ -n "$GLOBAL_DNSMASQ_CONF" ] && rm -rf "$GLOBAL_DNSMASQ_CONF"
+	[ -n "$GLOBAL_DNSMASQ_CONF_PATH" ] && rm -rf "$GLOBAL_DNSMASQ_CONF_PATH"
+
 	[ "1" = "1" ] && {
 		#restore logic
 		bak_dnsmasq_dns_redirect=$(config_n_get @global[0] dnsmasq_dns_redirect)
@@ -1900,6 +1906,28 @@ get_local_dns() {
 	[ -z "${DEFAULT_DNS}" ] && [ "$(echo $ISP_DNS | tr ' ' '\n' | wc -l)" -ge 1 ] && DEFAULT_DNS=$(echo -n $ISP_DNS | tr ' ' '\n' | tr '\n' ',' | sed 's/,$//')
 	LOCAL_DNS="${DEFAULT_DNS:-223.5.5.5}"
 	LOCAL_DNS="${LOCAL_DNS%%,*}"
+}
+
+fork_optimize_smartdns() {
+	[ "$(config_n_get @global_optimize[0] fork_optimize 1)" != "1" ] && return 1
+	[ "$(config_n_get @global_optimize[0] smartdns_use_group $(config_n_get @global[0] smartdns_use_group 1))" != "1" ] && return 1
+	[ ! -f "$APP_PATH/helper_smartdns_add_optimize.lua" ] && return 1
+
+	local smartdns_split_shunt=$(config_n_get @global_optimize[0] smartdns_split_shunt 0)
+	local smartdns_no_ip_alias=$(config_n_get @global_optimize[0] smartdns_no_ip_alias $(config_n_get @global[0] smartdns_no_ip_alias 1))
+	local smartdns_cache_mode=$(config_n_get @global_optimize[0] smartdns_cache_mode $(config_n_get @global[0] smartdns_cache_mode "300"))
+	local smartdns_no_rule_addr=$(config_n_get @global_optimize[0] smartdns_no_rule_addr $(config_n_get @global[0] smartdns_no_rule_addr 1))
+	local smartdns_serve_expired=$(config_n_get @global_optimize[0] smartdns_serve_expired 1)
+
+	lua $APP_PATH/helper_smartdns_add_optimize.lua -FLAG "default" -SMARTDNS_CONF "/tmp/etc/smartdns/$CONFIG.conf" \
+		-LISTEN_PORT ${SMARTDNS_LISTEN_PORT} -LOCAL_PORT ${SMARTDNS_LOCAL_PORT} -DNS_REDIRECT ${DNS_REDIRECT} \
+		-LOCAL_GROUP ${group_domestic:-null} -REMOTE_GROUP "passwall_proxy" -REMOTE_PROXY_SERVER ${GLOBAL_SOCKS_server} -USE_DEFAULT_DNS "${smartdns_default_dns}" \
+		-REMOTE_DNS ${smartdns_remote_dns} -DNS_MODE ${DNS_MODE:-socks} -TUN_DNS ${TUN_DNS} \
+		-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
+		-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
+		-SUBNET ${subnet_ip:-0} -NO_LOGIC_LOG ${NO_LOGIC_LOG:-0} \
+		-NO_IP_ALIAS ${smartdns_no_ip_alias:-1} -CACHE_MODE "${smartdns_cache_mode:-300}" -NO_RULE_ADDR ${smartdns_no_rule_addr:-1} \
+		-SPLIT_SHUNT ${smartdns_split_shunt:-0} -SERVE_EXPIRED ${smartdns_serve_expired:-1}
 }
 
 get_local_dns
