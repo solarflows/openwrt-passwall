@@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-passwall
 PKG_VERSION:=26.10.4
-PKG_RELEASE:=1
+PKG_RELEASE:=10
 PKG_PO_VERSION:=$(PKG_VERSION)
 
 PKG_CONFIG_DEPENDS:= \
@@ -159,6 +159,12 @@ endef
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
+[ -z "$${IPKG_INSTROOT}" ] && {
+	uci -q get passwall.@global_optimize[0] >/dev/null || {
+		uci -q add passwall global_optimize >/dev/null
+		uci -q commit passwall
+	}
+}
 rm -f $${IPKG_INSTROOT}/usr/share/passwall/rules/*.nft
 rm -rf $${IPKG_INSTROOT}/tmp/etc/passwall_tmp
 exit 0
