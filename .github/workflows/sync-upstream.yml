@@ -87,7 +87,7 @@ jobs:
 
             resolve_makefile() {
               [ ! -f "luci-app-passwall/Makefile" ] && return 1
-              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); sys.exit(0 if m and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m.group(1).strip()}\nPKG_RELEASE:=1', c, flags=re.S)) else 1)"
+              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
             }
 
             while [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; do
