@@ -14,6 +14,25 @@ local xray_version = api.get_app_version("xray")
 
 local xray_min_version = "26.7.11"
 
+local _geosite_has_gfw = nil
+local function check_geosite_gfw(bin, geo_file)
+	if _geosite_has_gfw ~= nil then return _geosite_has_gfw end
+	local cache_file = api.CACHE_PATH .. "/geosite_has_gfw"
+	local dat_stat = fs.stat(geo_file)
+	local c_stat = fs.stat(cache_file)
+	if c_stat and dat_stat and c_stat.mtime and dat_stat.mtime and c_stat.mtime >= dat_stat.mtime then
+		local content = fs.readfile(cache_file)
+		if content and content ~= "" then
+			_geosite_has_gfw = (content == "1")
+			return _geosite_has_gfw
+		end
+	end
+	local has_gfw = (luci.sys.call('"' .. bin .. '" -type geosite -input "' .. geo_file .. '" | grep -q "^GFW$"') == 0)
+	_geosite_has_gfw = has_gfw
+	fs.writefile(cache_file, has_gfw and "1" or "0")
+	return _geosite_has_gfw
+end
+
 local function get_domain_excluded()
 	local path = string.format("/etc/%s/rules/domains_excluded", api.c_config)
 	local content = fs.readfile(path)
@@ -1478,7 +1497,7 @@ function gen_config(var)
 				local bin = api.finded_com("geoview")
 				if bin then
 					local geo_file = (api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"):match("^(.*)/") .. "/geosite.dat"
-					if luci.sys.call('"' .. bin .. '" -type geosite -input "' .. geo_file .. '" | grep -q "^GFW$"') == 0 then
+					if check_geosite_gfw(bin, geo_file) then
 						domain_list = (domain_list == "") and "geosite:gfw" or domain_list .. "\ngeosite:gfw"
 					end
 				end
