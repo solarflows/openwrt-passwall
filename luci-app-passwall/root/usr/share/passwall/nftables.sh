@@ -1773,10 +1773,17 @@ stop() {
 		uci -q commit ${CONFIG}
 		#flush_table
 		flush_nftset
-		rm -rf $TMP_PATH2/singbox*
-		rm -rf $TMP_PATH2/dnsmasq*
-		rm -rf $TMP_PATH2/geo_output
-		rm -rf $TMP_PATH2/user_rules
+		if [ $(config_n_get @global[0] flush_set "0") = "1" ]; then
+			rm -rf $TMP_PATH2/singbox*
+			rm -rf $TMP_PATH2/dnsmasq*
+			rm -rf $TMP_PATH2/geo_output
+			rm -rf $TMP_PATH2/user_rules
+		elif [ "$(config_n_get @global_optimize[0] fork_optimize 1)" != "1" ]; then
+			rm -rf $TMP_PATH2/singbox*
+			rm -rf $TMP_PATH2/dnsmasq*
+			rm -rf $TMP_PATH2/geo_output
+			rm -rf $TMP_PATH2/user_rules
+		fi
 	}
 	flush_include
 }
