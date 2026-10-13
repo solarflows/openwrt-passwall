@@ -1759,15 +1759,18 @@ start() {
 stop() {
 	[ -z "$(command -v echolog)" ] && . "$UTILS_PATH"
 	del_firewall_rule
-	[ $(config_n_get @global[0] flush_set_on_reboot "0") = "1" ] || [ $(config_n_get @global[0] flush_set "0") = "1" ] && {
+	local flush_set_flag=$(config_n_get @global[0] flush_set "0")
+	[ $(config_n_get @global[0] flush_set_on_reboot "0") = "1" ] || [ "$flush_set_flag" = "1" ] && {
 		uci -q delete ${CONFIG}.@global[0].flush_set
 		uci -q commit ${CONFIG}
 		#flush_table
 		flush_nftset
-		rm -rf $TMP_PATH2/singbox*
-		rm -rf $TMP_PATH2/dnsmasq*
-		rm -rf $TMP_PATH2/geo_output
-		rm -rf $TMP_PATH2/user_rules
+		if [ "$flush_set_flag" = "1" ] || [ "$(config_n_get @global_optimize[0] fork_optimize 1)" != "1" ]; then
+			rm -rf $TMP_PATH2/singbox*
+			rm -rf $TMP_PATH2/dnsmasq*
+			rm -rf $TMP_PATH2/geo_output
+			rm -rf $TMP_PATH2/user_rules
+		fi
 	}
 	flush_include
 }
