@@ -92,9 +92,10 @@ local function insert_unique(dest_table, value, lookup_table)
 	end
 end
 
+local geosite_path = api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"
+geosite_path = geosite_path:match("^(.*)/") .. "/geosite.dat"
+
 local function get_geosite(list_arg, out_path)
-	local geosite_path = api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"
-	geosite_path = geosite_path:match("^(.*)/") .. "/geosite.dat"
 	if not is_file_nonzero(geosite_path) then return 1, "File geosite.dat not found" end
 	if not list_arg or list_arg == "" then return 1, "Site list cannot be empty" end
 	if not out_path or out_path == "" then return 1, "Output path cannot be empty" end
@@ -102,6 +103,22 @@ local function get_geosite(list_arg, out_path)
 	local cmd = string.format("%q -type geosite -append=true -input %q -list %q -output %q -lowmem=true",
 		bin, geosite_path, list_arg, out_path)
 	return api.exec_call(cmd)
+end
+
+local function is_rule_cache_valid(cache_base, src_rule_file)
+	local ok_file = cache_base .. "_ok"
+	local ok_stat = fs.stat(ok_file)
+	if not ok_stat or not ok_stat.mtime then return false end
+	if not fs.access(cache_base) then return false end
+	if src_rule_file and fs.access(src_rule_file) then
+		local src_stat = fs.stat(src_rule_file)
+		if src_stat and src_stat.mtime and src_stat.mtime > ok_stat.mtime then return false end
+	end
+	if fs.access(cache_base .. "_geo") and fs.access(geosite_path) then
+		local geo_stat = fs.stat(geosite_path)
+		if geo_stat and geo_stat.mtime and geo_stat.mtime > ok_stat.mtime then return false end
+	end
+	return true
 end
 
 sys.call("mkdir -p %s" % FLAG_PATH)
@@ -299,7 +316,7 @@ end
 
 -- 1. 屏蔽列表文件准备
 local file_block_host = CACHE_RULES_PATH .. "/block_host"
-if not fs.access(file_block_host .. "_ok") then
+if not is_rule_cache_valid(file_block_host, USER_RULES_PATH .. "/block_host") then
 	api.remove(file_block_host .. "*")
 end
 local block_geosite_flag = fs.access(file_block_host) and fs.access(file_block_host .. "_ok") and fs.access(file_block_host .. "_geo")
@@ -374,7 +391,7 @@ end
 
 -- 3. 直连（白名单）列表文件准备
 local file_direct_host = CACHE_RULES_PATH .. "/direct_host"
-if not fs.access(file_direct_host .. "_ok") then
+if not is_rule_cache_valid(file_direct_host, USER_RULES_PATH .. "/direct_host") then
 	api.remove(file_direct_host .. "*")
 end
 local direct_geosite_flag = fs.access(file_direct_host) and fs.access(file_direct_host .. "_ok") and fs.access(file_direct_host .. "_geo")
@@ -419,7 +436,7 @@ end
 
 -- 4. 代理（黑名单）列表文件准备
 local file_proxy_host = CACHE_RULES_PATH .. "/proxy_host"
-if not fs.access(file_proxy_host .. "_ok") then
+if not is_rule_cache_valid(file_proxy_host, USER_RULES_PATH .. "/proxy_host") then
 	api.remove(file_proxy_host .. "*")
 end
 local proxy_geosite_flag = fs.access(file_proxy_host) and fs.access(file_proxy_host .. "_ok") and fs.access(file_proxy_host .. "_geo")
@@ -564,18 +581,24 @@ if IS_SHUNT_NODE and not only_global then
 	local new_md5 = api.md5_string(SHUNT_LIST)
 	if cache_md5 == "" or new_md5 == "" or cache_md5 ~= new_md5 then
 		USE_CACHE = false
-	elseif SPLIT_SHUNT == "1" then
-		for _, rdata in ipairs(split_rules_list) do
-			if (#rdata.doms > 0 or (USE_GEOVIEW == "1" and rdata.geosite ~= "")) and not is_file_nonzero(rdata.host_file) then
-				USE_CACHE = false
-				break
-			end
-		end
 	else
-		if ((#direct_domain > 0 or (USE_GEOVIEW == "1" and geosite_direct_arg ~= "")) and not is_file_nonzero(shunt_direct_host))
-			or ((#proxy_domain > 0 or (USE_GEOVIEW == "1" and geosite_proxy_arg ~= "")) and not is_file_nonzero(shunt_proxy_host))
-			or ((#black_domain > 0 or (USE_GEOVIEW == "1" and geosite_black_arg ~= "")) and not is_file_nonzero(shunt_black_host)) then
+		local md5_stat = fs.stat(MD5_FILE)
+		local geo_stat = fs.stat(geosite_path)
+		if geo_stat and geo_stat.mtime and md5_stat and md5_stat.mtime and geo_stat.mtime > md5_stat.mtime then
 			USE_CACHE = false
+		elseif SPLIT_SHUNT == "1" then
+			for _, rdata in ipairs(split_rules_list) do
+				if (#rdata.doms > 0 or (USE_GEOVIEW == "1" and rdata.geosite ~= "")) and not is_file_nonzero(rdata.host_file) then
+					USE_CACHE = false
+					break
+				end
+			end
+		else
+			if ((#direct_domain > 0 or (USE_GEOVIEW == "1" and geosite_direct_arg ~= "")) and not is_file_nonzero(shunt_direct_host))
+				or ((#proxy_domain > 0 or (USE_GEOVIEW == "1" and geosite_proxy_arg ~= "")) and not is_file_nonzero(shunt_proxy_host))
+				or ((#black_domain > 0 or (USE_GEOVIEW == "1" and geosite_black_arg ~= "")) and not is_file_nonzero(shunt_black_host)) then
+				USE_CACHE = false
+			end
 		end
 	end
 
