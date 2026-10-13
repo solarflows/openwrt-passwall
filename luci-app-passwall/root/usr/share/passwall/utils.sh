@@ -137,9 +137,12 @@ get_geoip() {
 	local geoip_code="$1"
 	local geoip_type_flag=""
 	local output_path="${geo_output_path}/geoip-${geoip_code}-$2"
-	[ ! -s "${output_path}" ] && {
-		local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"
-		geoip_path="${geoip_path%*/}/geoip.dat"
+	local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"
+	geoip_path="${geoip_path%*/}/geoip.dat"
+	local need_gen=0
+	[ ! -s "${output_path}" ] && need_gen=1
+	[ -s "$geoip_path" ] && [ -s "${output_path}" ] && [ "$geoip_path" -nt "${output_path}" ] && need_gen=1
+	[ "$need_gen" = "1" ] && {
 		local bin="$(first_type $(config_n_get @global_app[0] geoview_file) geoview)"
 		[ -n "$bin" ] && [ -s "$geoip_path" ] || { echo ""; return; }
 		case "$2" in
