@@ -23,7 +23,10 @@ _M.order = {
 -- downloadable component because its LuCI package update flow is handled separately.
 _M.passwall = {
 	name = "PassWall",
-	get_url = gh_release_url
+	repo = "solarflows/openwrt-passwall",
+	get_url = function(self)
+		return "https://api.github.com/repos/" .. self.repo .. "/releases/latest"
+	end
 }
 
 _M.hysteria = {
