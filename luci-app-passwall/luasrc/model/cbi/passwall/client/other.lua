@@ -319,6 +319,17 @@ if api.is_finded("smartdns") then
 	o.default = "1"
 	o.rmempty = false
 	o:depends("smartdns_use_group", "1")
+
+	o = s_opt:option(Flag, "smartdns_vps_group", translate("SmartDNS Dedicated Node Direct Group (passwall_vps)"),
+		translate("Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("smartdns_use_group", "1")
+
+	o = s_opt:option(Value, "smartdns_vps_group_custom", translate("Custom Node Direct Group Name"),
+		translate("Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."))
+	o.placeholder = "passwall_vps"
+	o:depends({smartdns_use_group = "1", smartdns_vps_group = "1"})
 end
 
 return api.return_map(m)

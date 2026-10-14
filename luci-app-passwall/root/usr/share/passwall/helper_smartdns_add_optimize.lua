@@ -4,6 +4,10 @@ local var = api.get_args(arg)
 local FLAG = var["-FLAG"]
 local SMARTDNS_CONF = var["-SMARTDNS_CONF"]
 local LOCAL_GROUP = var["-LOCAL_GROUP"]
+local VPS_GROUP = var["-VPS_GROUP"]
+if not VPS_GROUP or VPS_GROUP == "" or VPS_GROUP == "nil" then
+	VPS_GROUP = LOCAL_GROUP
+end
 local REMOTE_GROUP = var["-REMOTE_GROUP"]
 local REMOTE_PROXY_SERVER = var["-REMOTE_PROXY_SERVER"]
 local USE_DEFAULT_DNS = var["-USE_DEFAULT_DNS"]
@@ -214,12 +218,13 @@ end
 
 -- 基础绑定与服务配置（使用端口绑定规则组沙盒，零污染 SmartDNS 默认组与 15354 直连回查端口）
 local listen_address = "[::]:" .. LISTEN_PORT .. (DNS_REDIRECT and "" or "@lo")
+local vps_bind_group = VPS_GROUP or LOCAL_GROUP
 config_lines = {
 	"# ── PassWall SmartDNS Group Rules Configuration ──",
 	tonumber(LISTEN_PORT) ~= 0 and ("bind " .. listen_address .. " -group " .. SANDBOX_GROUP .. (NO_RULE_ADDR == "1" and " -no-rule-addr" or "")) or "",
 	tonumber(LISTEN_PORT) ~= 0 and ("bind-tcp " .. listen_address .. " -group " .. SANDBOX_GROUP .. (NO_RULE_ADDR == "1" and " -no-rule-addr" or "")) or "",
-	(tonumber(LOCAL_PORT) ~= 0 and LOCAL_GROUP) and "bind [::]:" .. LOCAL_PORT .. "@lo -group " .. LOCAL_GROUP or "",
-	(tonumber(LOCAL_PORT) ~= 0 and LOCAL_GROUP) and "bind-tcp [::]:" .. LOCAL_PORT .. "@lo -group " .. LOCAL_GROUP or "",
+	(tonumber(LOCAL_PORT) ~= 0 and vps_bind_group) and ("bind [::]:" .. LOCAL_PORT .. "@lo -group " .. vps_bind_group .. (NO_RULE_ADDR == "1" and " -no-rule-addr" or "")) or "",
+	(tonumber(LOCAL_PORT) ~= 0 and vps_bind_group) and ("bind-tcp [::]:" .. LOCAL_PORT .. "@lo -group " .. vps_bind_group .. (NO_RULE_ADDR == "1" and " -no-rule-addr" or "")) or "",
 	tonumber(force_https_soa) == 1 and "force-qtype-SOA 65" or "force-qtype-SOA -,65",
 	"server 223.5.5.5 -bootstrap-dns",
 	(local_domain and local_domain ~= "") and ("local-domain " .. local_domain) or "",
@@ -300,6 +305,21 @@ end
 
 local setflag = (NFTFLAG == "1") and "inet#passwall#" or ""
 local set_type = (NFTFLAG == "1") and "-nftset" or "-ipset"
+
+-- 注册节点列表专属直连组 (passwall_vps)
+if VPS_GROUP == "passwall_vps" then
+	table.insert(config_lines, "")
+	table.insert(config_lines, "# ── 节点列表专属直连组 (passwall_vps) 纯净加密 DoH ──")
+	table.insert(config_lines, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -group passwall_vps -exclude-default-group")
+	table.insert(config_lines, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -group passwall_vps -exclude-default-group")
+	table.insert(config_lines, "")
+	table.insert(config_lines, "# ── 节点列表专属直连组规则作用域 (passwall_vps) ──")
+	table.insert(config_lines, "group-begin passwall_vps -inherit none")
+	table.insert(config_lines, "force-qtype-SOA 65")
+	local vps_sets = { "#4:" .. setflag .. "psw_vps", "#6:" .. setflag .. "psw_vps6" }
+	table.insert(config_lines, string.format("domain-rules /./ -nameserver passwall_vps -speed-check-mode none -d no %s %s", set_type, table.concat(vps_sets, ",")))
+	table.insert(config_lines, "group-end")
+end
 
 local function clean_domain_line(line)
 	if not line or line == "" or line:find("#") then return nil end
@@ -774,10 +794,10 @@ end
 -- ════════════════════════════════════════════════════════════
 table.insert(config_lines, "")
 table.insert(config_lines, "# ── PassWall 端口级独立规则组沙盒: " .. SANDBOX_GROUP .. " ──")
-table.insert(config_lines, "group-begin " .. SANDBOX_GROUP)
+table.insert(config_lines, "group-begin " .. SANDBOX_GROUP .. " -inherit none")
 
 -- (7.1) 默认托底 DNS (最先声明，优先级最低)
-local DEFAULT_DNS_GROUP = (USE_DEFAULT_DNS == "direct" and LOCAL_GROUP) or (USE_DEFAULT_DNS == "remote" and REMOTE_GROUP)
+local DEFAULT_DNS_GROUP = (USE_DEFAULT_DNS == "remote" and REMOTE_GROUP) or LOCAL_GROUP
 if only_global == 1 then
 	DEFAULT_DNS_GROUP = REMOTE_GROUP
 end
@@ -930,11 +950,16 @@ end
 
 -- (7.8) 节点域名列表 (vpslist - 最高优先级免代理保护)
 if is_file_nonzero(file_vpslist) then
+	local target_group = VPS_GROUP or LOCAL_GROUP
 	local sets = { "#4:" .. setflag .. "psw_vps", "#6:" .. setflag .. "psw_vps6" }
-	local domain_rules_str = string.format("domain-rules /domain-set:%s/ %s %s %s", "psw-vpslist", LOCAL_GROUP and "-nameserver " .. LOCAL_GROUP or "", set_type, table.concat(sets, ","))
-	domain_rules_str = domain_rules_str .. (LOCAL_EXTEND_ARG ~= "" and " " .. LOCAL_EXTEND_ARG or "")
+	local domain_rules_str = string.format("domain-rules /domain-set:%s/ %s %s %s", "psw-vpslist", target_group and "-nameserver " .. target_group or "", set_type, table.concat(sets, ","))
+	if target_group == "passwall_vps" then
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -d no"
+	elseif LOCAL_EXTEND_ARG ~= "" then
+		domain_rules_str = domain_rules_str .. " " .. LOCAL_EXTEND_ARG
+	end
 	table.insert(config_lines, domain_rules_str)
-	log(string.format("  - 节点列表中的域名(vpslist)使用分组：%s", LOCAL_GROUP or "默认"))
+	log(string.format("  - 节点列表中的域名(vpslist)使用分组：%s", target_group or "默认"))
 end
 
 -- 用户自定义扩展配置插槽
