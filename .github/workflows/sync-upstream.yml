@@ -43,27 +43,18 @@ jobs:
         id: check_update
         run: |
           UPSTREAM_SHA=$(git rev-parse upstream_remote/main)
-          BASE_SHA=$(git merge-base origin/upstream upstream_remote/main 2>/dev/null || echo "")
           PREV_UPSTREAM_SHA=$(git rev-parse origin/upstream 2>/dev/null || echo "")
           echo "Upstream main commit:     ${UPSTREAM_SHA}"
-          echo "Common base commit:       ${BASE_SHA}"
           echo "Previous upstream commit: ${PREV_UPSTREAM_SHA}"
           echo "prev_upstream_sha=${PREV_UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
-          if [ "$UPSTREAM_SHA" = "$BASE_SHA" ] && [ "${{ inputs.force_sync }}" != "true" ]; then
-            echo "Upstream is already integrated into local upstream branch. Nothing to do."
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "${UPSTREAM_SHA}" origin/main 2>/dev/null && [ "${{ inputs.force_sync }}" != "true" ]; then
+            echo "Upstream main is already integrated into local main branch. Nothing to do."
             echo "has_update=false" >> "$GITHUB_OUTPUT"
           else
             echo "New upstream changes detected."
             echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Sync upstream branch
-        if: steps.check_update.outputs.has_update == 'true'
-        run: |
-          git checkout -B upstream upstream_remote/main
-          git push origin upstream --force-with-lease
-          git push origin --tags --force 2>/dev/null || true
 
       - name: Rebase main branch onto upstream
         if: steps.check_update.outputs.has_update == 'true'
@@ -74,12 +65,13 @@ jobs:
 
           # Attempt rebase using --onto to cleanly replay custom commits onto new upstream
           PREV_UPSTREAM="${{ steps.check_update.outputs.prev_upstream_sha }}"
+          UPSTREAM_SHA="${{ steps.check_update.outputs.upstream_sha }}"
           if [ -n "$PREV_UPSTREAM" ] && git merge-base --is-ancestor "$PREV_UPSTREAM" main 2>/dev/null; then
             echo "Rebasing main onto upstream with boundary: $PREV_UPSTREAM"
-            REBASE_CMD="git rebase --empty=drop --onto upstream $PREV_UPSTREAM main"
+            REBASE_CMD="git rebase --empty=drop --onto upstream_remote/main $PREV_UPSTREAM main"
           else
             echo "Rebasing main onto upstream"
-            REBASE_CMD="git rebase --empty=drop upstream"
+            REBASE_CMD="git rebase --empty=drop upstream_remote/main"
           fi
 
           if ! eval "$REBASE_CMD"; then
@@ -87,7 +79,7 @@ jobs:
 
             resolve_makefile() {
               [ ! -f "luci-app-passwall/Makefile" ] && return 1
-              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); sys.exit(0 if m and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m.group(1).strip()}\nPKG_RELEASE:=1', c, flags=re.S)) else 1)"
+              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
             }
 
             while [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; do
@@ -155,6 +147,10 @@ jobs:
           fi
 
           echo "Rebase completed successfully."
+          git checkout -B upstream "$UPSTREAM_SHA"
+          git push origin upstream --force-with-lease
+          git push origin --tags --force 2>/dev/null || true
+          git checkout main
           git push origin main --force-with-lease
           git checkout -B custom main
           git push origin custom --force-with-lease
