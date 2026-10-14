@@ -4,6 +4,10 @@ local var = api.get_args(arg)
 local FLAG = var["-FLAG"]
 local SMARTDNS_CONF = var["-SMARTDNS_CONF"]
 local LOCAL_GROUP = var["-LOCAL_GROUP"]
+local VPS_GROUP = var["-VPS_GROUP"]
+if not VPS_GROUP or VPS_GROUP == "" or VPS_GROUP == "nil" then
+	VPS_GROUP = LOCAL_GROUP
+end
 local REMOTE_GROUP = var["-REMOTE_GROUP"]
 local REMOTE_PROXY_SERVER = var["-REMOTE_PROXY_SERVER"]
 local USE_DEFAULT_DNS = var["-USE_DEFAULT_DNS"]
@@ -226,11 +230,12 @@ local force_qtype_soa = tonumber(force_https_soa) == 1 and "force-qtype-SOA 65" 
 local proxy_server_name = "psw-proxy-server"
 local listen_address = "[::]:" .. LISTEN_PORT .. (DNS_REDIRECT and "" or "@lo")
 local local_domain = DNS_REDIRECT and api.uci_get("dhcp", "@dnsmasq[0]", "domain")
+local vps_bind_group = VPS_GROUP or LOCAL_GROUP
 config_lines = {
 	tonumber(LISTEN_PORT) ~= 0 and ("bind " .. listen_address .. " -group " .. SANDBOX_GROUP) or "",
 	tonumber(LISTEN_PORT) ~= 0 and ("bind-tcp " .. listen_address .. " -group " .. SANDBOX_GROUP) or "",
-	(tonumber(LOCAL_PORT) ~= 0 and LOCAL_GROUP) and "bind [::]:" .. LOCAL_PORT .. "@lo -group " ..  LOCAL_GROUP or "",
-	(tonumber(LOCAL_PORT) ~= 0 and LOCAL_GROUP) and "bind-tcp [::]:" .. LOCAL_PORT .. "@lo -group " .. LOCAL_GROUP or "",
+	(tonumber(LOCAL_PORT) ~= 0 and vps_bind_group) and "bind [::]:" .. LOCAL_PORT .. "@lo -group " ..  vps_bind_group or "",
+	(tonumber(LOCAL_PORT) ~= 0 and vps_bind_group) and "bind-tcp [::]:" .. LOCAL_PORT .. "@lo -group " .. vps_bind_group or "",
 	"server 223.5.5.5 -bootstrap-dns",
 	-- Set the suffix before loading hosts/leases so initial records are expanded too.
 	(local_domain and local_domain ~= "") and "local-domain " .. local_domain or "",
@@ -397,6 +402,19 @@ if DEFAULT_DNS_GROUP == AUTO_GROUP then
 	table.insert(config_lines, "group-end")
 end
 
+local setflag = (NFTFLAG == "1") and "inet#passwall#" or ""
+local set_type = (NFTFLAG == "1") and "-nftset" or "-ipset"
+
+if VPS_GROUP == "passwall_vps" then
+	table.insert(config_lines, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -group passwall_vps -exclude-default-group")
+	table.insert(config_lines, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -group passwall_vps -exclude-default-group")
+	table.insert(config_lines, "group-begin passwall_vps -inherit none")
+	table.insert(config_lines, force_qtype_soa)
+	local vps_sets = { "#4:" .. setflag .. "psw_vps", "#6:" .. setflag .. "psw_vps6" }
+	table.insert(config_lines, string.format("domain-rules /./ -nameserver passwall_vps -speed-check-mode none -d no %s %s", set_type, table.concat(vps_sets, ",")))
+	table.insert(config_lines, "group-end")
+end
+
 -- PassWall 规则组不继承外部规则。
 table.insert(config_lines, "group-begin " .. SANDBOX_GROUP .. " -inherit none")
 table.insert(config_lines, force_qtype_soa)
@@ -414,9 +432,6 @@ if DEFAULT_DNS_GROUP then
 	end
 	table.insert(config_lines, domain_rules_str)
 end
-
-local setflag = (NFTFLAG == "1") and "inet#passwall#" or ""
-local set_type = (NFTFLAG == "1") and "-nftset" or "-ipset"
 
 --预设排序标签(越往后优先级越高)
 for i = 1, 10 do
@@ -513,12 +528,17 @@ if is_file_nonzero(file_vpslist) then
 		"#4:" .. setflag .. "psw_vps",
 		"#6:" .. setflag .. "psw_vps6"
 	}
-	local domain_rules_str = string.format('domain-rules /domain-set:%s/ %s', domain_set_name, LOCAL_GROUP and "-nameserver " .. LOCAL_GROUP or "")
+	local target_group = VPS_GROUP or LOCAL_GROUP
+	local domain_rules_str = string.format('domain-rules /domain-set:%s/ %s', domain_set_name, target_group and "-nameserver " .. target_group or "")
 	domain_rules_str = domain_rules_str .. " " .. set_type .. " " .. table.concat(sets, ",")
-	domain_rules_str = domain_rules_str .. (LOCAL_EXTEND_ARG ~= "" and " " .. LOCAL_EXTEND_ARG or "")
+	if target_group == "passwall_vps" then
+		domain_rules_str = domain_rules_str .. " -speed-check-mode none -d no"
+	elseif LOCAL_EXTEND_ARG ~= "" then
+		domain_rules_str = domain_rules_str .. " " .. LOCAL_EXTEND_ARG
+	end
 	table.insert(tmp_lines, domain_rules_str)
 	insert_array_after(config_lines, tmp_lines, "#--9")
-	log(string.format("  - 节点列表中的域名(vpslist)使用分组：%s", LOCAL_GROUP or "默认"))
+	log(string.format("  - 节点列表中的域名(vpslist)使用分组：%s", target_group or "默认"))
 end
 
 --直连（白名单）列表

@@ -2318,3 +2318,15 @@ msgstr "SmartDNS 屏蔽 IPv6 解析"
 
 msgid "Block AAAA records (-address #6) for this rule, forcing IPv4."
 msgstr "针对该分流规则拦截 AAAA 记录 (-address #6)，强制使用 IPv4。"
+
+msgid "SmartDNS Dedicated Node Direct Group (passwall_vps)"
+msgstr "SmartDNS 节点列表专属直连组 (passwall_vps)"
+
+msgid "Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."
+msgstr "创建专属独立分组 (passwall_vps) 并使用纯净加密 DoH 直连上游解析节点域名 (vpslist)，与国内运营商 ISP DNS 及普通缓存物理隔离。"
+
+msgid "Custom Node Direct Group Name"
+msgstr "自定义节点直连分组名称"
+
+msgid "Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."
+msgstr "留空则自动创建并使用专属纯净加密组 (passwall_vps)；亦可指定分组名 (如 cn) 复用已有规则组。"
