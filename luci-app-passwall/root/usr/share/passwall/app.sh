@@ -1284,6 +1284,7 @@ start_dns() {
 			else
 				smartdns_remote_dns="tcp://1.1.1.1"
 			fi
+			local smartdns_default_dns=$(config_n_get @global[0] smartdns_default_dns direct)
 
 			echolog "  - 域名解析：使用SmartDNS，请确保配置正常。"
 			china_ng_listen="127.0.0.1#${SMARTDNS_LISTEN_PORT}"
@@ -1381,7 +1382,7 @@ start_dns() {
 		lua $APP_PATH/helper_dnsmasq.lua stretch
 		lua $APP_PATH/helper_dnsmasq.lua add_rule -FLAG "default" -TMP_DNSMASQ_PATH ${GLOBAL_DNSMASQ_CONF_PATH} -DNSMASQ_CONF_FILE ${GLOBAL_DNSMASQ_CONF} \
 			-DEFAULT_DNS ${DEFAULT_DNS} -LOCAL_DNS ${LOCAL_DNS} -TUN_DNS ${DNSMASQ_TUN_DNS} \
-			-USE_DEFAULT_DNS "${smartdns_default_dns}" -CHINADNS_DNS ${china_ng_listen:-0} \
+			-USE_DEFAULT_DNS "${USE_DEFAULT_DNS:-direct}" -CHINADNS_DNS ${china_ng_listen:-0} \
 			-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 			-NODE ${NODE} -DEFAULT_PROXY_MODE ${TCP_PROXY_MODE} -NO_PROXY_IPV6 ${DNSMASQ_FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 			-NO_LOGIC_LOG ${NO_LOGIC_LOG:-0}
@@ -1401,7 +1402,7 @@ start_dns() {
 		GLOBAL_DNSMASQ_CONF_PATH=${GLOBAL_ACL_PATH}/dnsmasq.d
 		lua $APP_PATH/helper_dnsmasq.lua add_rule -FLAG "default" -TMP_DNSMASQ_PATH ${GLOBAL_DNSMASQ_CONF_PATH} -DNSMASQ_CONF_FILE ${GLOBAL_DNSMASQ_CONF} \
 			-LISTEN_PORT ${GLOBAL_DNSMASQ_PORT} -DEFAULT_DNS ${DEFAULT_DNS} -LOCAL_DNS ${LOCAL_DNS} -TUN_DNS ${DNSMASQ_TUN_DNS} \
-			-USE_DEFAULT_DNS "${smartdns_default_dns}" -CHINADNS_DNS ${china_ng_listen:-0} \
+			-USE_DEFAULT_DNS "${USE_DEFAULT_DNS:-direct}" -CHINADNS_DNS ${china_ng_listen:-0} \
 			-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 			-NODE ${NODE} -DEFAULT_PROXY_MODE ${TCP_PROXY_MODE} -NO_PROXY_IPV6 ${DNSMASQ_FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
 			-NO_LOGIC_LOG ${NO_LOGIC_LOG:-0}
@@ -1937,10 +1938,20 @@ fork_optimize_smartdns() {
 	local smartdns_cache_mode=$(config_n_get @global_optimize[0] smartdns_cache_mode $(config_n_get @global[0] smartdns_cache_mode "300"))
 	local smartdns_no_rule_addr=$(config_n_get @global_optimize[0] smartdns_no_rule_addr $(config_n_get @global[0] smartdns_no_rule_addr 1))
 	local smartdns_serve_expired=$(config_n_get @global_optimize[0] smartdns_serve_expired 1)
+	local smartdns_vps_group=$(config_n_get @global_optimize[0] smartdns_vps_group 1)
+	local smartdns_vps_group_custom=$(config_n_get @global_optimize[0] smartdns_vps_group_custom)
+	local vps_group=""
+	if [ "${smartdns_vps_group}" = "1" ]; then
+		vps_group="${smartdns_vps_group_custom:-passwall_vps}"
+		echolog "  - 节点列表 DNS：使用 SmartDNS 专属直连组(${vps_group})"
+	else
+		vps_group="${group_domestic:-cn}"
+		echolog "  - 节点列表 DNS：复用 SmartDNS 国内分组(${vps_group})"
+	fi
 
 	lua $APP_PATH/helper_smartdns_add_optimize.lua -FLAG "default" -SMARTDNS_CONF "/tmp/etc/smartdns/$CONFIG.conf" \
 		-LISTEN_PORT ${SMARTDNS_LISTEN_PORT} -LOCAL_PORT ${SMARTDNS_LOCAL_PORT} -DNS_REDIRECT ${DNS_REDIRECT} \
-		-LOCAL_GROUP ${group_domestic:-null} -REMOTE_GROUP "passwall_proxy" -REMOTE_PROXY_SERVER ${GLOBAL_SOCKS_server} -USE_DEFAULT_DNS "${smartdns_default_dns}" \
+		-LOCAL_GROUP ${group_domestic:-null} -VPS_GROUP "${vps_group}" -REMOTE_GROUP "passwall_proxy" -REMOTE_PROXY_SERVER ${GLOBAL_SOCKS_server} -USE_DEFAULT_DNS "${smartdns_default_dns}" \
 		-REMOTE_DNS ${smartdns_remote_dns} -DNS_MODE ${DNS_MODE:-socks} -TUN_DNS ${TUN_DNS} \
 		-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" -USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
 		-NODE ${NODE} -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 ${FILTER_PROXY_IPV6:-0} -NFTFLAG ${nftflag:-0} \
