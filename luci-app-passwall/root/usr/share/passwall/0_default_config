@@ -59,6 +59,7 @@ config global_optimize
 	option smartdns_serve_expired '1'
 	option smartdns_no_ip_alias '1'
 	option smartdns_no_rule_addr '1'
+	option smartdns_vps_group '1'
 
 config global_other
 	option auto_detection_time 'tcping'
