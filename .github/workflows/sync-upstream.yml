@@ -124,16 +124,9 @@ jobs:
 
               # Auto-resolve app.sh smartdns-shared and custom logging conflict
               if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
-                python3 -c "
-import re, sys
-p = 'luci-app-passwall/root/usr/share/passwall/app.sh'
-c = open(p, 'r', encoding='utf-8').read()
-c = re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) + ('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S)
-c = re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S)
-c = re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S)
-open(p, 'w', encoding='utf-8').write(c)
-sys.exit(0 if '<<<<<<<' not in c else 1)
-" && git add luci-app-passwall/root/usr/share/passwall/app.sh && echo "Auto-resolved app.sh conflict."
+                python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/app.sh'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1)+('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S); open(p,'w',encoding='utf-8').write(c); sys.exit(0 if '<<<<<<<' not in c else 1)"
+                git add luci-app-passwall/root/usr/share/passwall/app.sh
+                echo "Auto-resolved app.sh conflict."
               fi
 
               REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)

@@ -176,11 +176,21 @@ o.write = function(self, section, value)
 	if old and old ~= value then
 		m:set(section, "flush_set", "1")
 	end
+	if value ~= "smartdns-shared" then
+		m:del(section, "group_domestic")
+	end
 	return ListValue.write(self, section, value)
 end
 if has_smartdns then
-	o:value("smartdns", "SmartDNS (" .. translate("Standalone Daemon") .. ")")
-	o:value("smartdns-shared", "SmartDNS (" .. translate("Host Shared / Cache Optimized") .. ")")
+	o:value("smartdns", "SmartDNS")
+	o:value("smartdns-shared", "SmartDNS-Shared")
+
+	o = s:taboption("DNS", Value, "group_domestic", translate("Domestic group name"))
+	o.default = "cn"
+	o.placeholder = "cn"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	o.description = translate("You only need to configure domestic DNS in SmartDNS, and fill in the domestic DNS group name here (default: cn).")
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))
@@ -191,7 +201,6 @@ o:depends({dns_shunt = "dnsmasq"})
 o:depends({dns_shunt = "chinadns-ng"})
 if has_smartdns then
 	o:depends({dns_shunt = "smartdns"})
-	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", Value, "direct_dns", translate("Direct DNS"))
@@ -495,12 +504,6 @@ if has_smartdns then
 		.. "</ul>"
 	o:depends({dns_shunt = "smartdns", tcp_proxy_mode = "proxy", chn_list = "direct"})
 	o:depends({dns_shunt = "smartdns-shared", tcp_proxy_mode = "proxy", chn_list = "direct"})
-
-	o = s:taboption("DNS", Value, "group_domestic", translate("Domestic Group Name"),
-		translate("Specify the domestic upstream group name configured in system SmartDNS (default: cn)."))
-	o.default = "cn"
-	o.placeholder = "cn"
-	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", Flag, "force_https_soa", translate("Force HTTPS SOA"), translate("Force queries with qtype 65 to respond with an SOA record."))

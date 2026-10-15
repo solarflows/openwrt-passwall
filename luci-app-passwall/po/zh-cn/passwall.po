@@ -2346,14 +2346,8 @@ msgstr "自定义节点直连分组名称"
 msgid "Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."
 msgstr "留空则自动创建并使用专属纯净加密组 (passwall_vps)；亦可指定分组名 (如 cn) 复用已有规则组。"
 
-msgid "Standalone Daemon"
-msgstr "独立进程"
+msgid "Domestic group name"
+msgstr "国内分组名"
 
-msgid "Host Shared / Cache Optimized"
-msgstr "系统共享/单进程优化"
-
-msgid "Domestic Group Name"
-msgstr "国内分组名称"
-
-msgid "Specify the domestic upstream group name configured in system SmartDNS (default: cn)."
-msgstr "指定主系统 SmartDNS 中配置的国内直连解析分组名称（默认为 cn）。"
+msgid "You only need to configure domestic DNS in SmartDNS, and fill in the domestic DNS group name here (default: cn)."
+msgstr "SmartDNS只需配置国内DNS即可，在此填入国内DNS分组名称（默认为 cn）。"
