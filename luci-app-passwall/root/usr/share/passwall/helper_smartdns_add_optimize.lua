@@ -6,6 +6,7 @@ local SMARTDNS_CONF = var["-SMARTDNS_CONF"]
 local LOCAL_GROUP = var["-LOCAL_GROUP"]
 local LOCAL_DNS = var["-LOCAL_DNS"]
 local VPS_GROUP = var["-VPS_GROUP"]
+local VPS_DNS = var["-VPS_DNS"]
 if not VPS_GROUP or VPS_GROUP == "" or VPS_GROUP == "nil" then
 	VPS_GROUP = LOCAL_GROUP
 end
@@ -49,6 +50,8 @@ local function get_remote_rule_extra()
 		extra = extra .. " -rr-ttl-max 300"
 	elseif CACHE_MODE == "60" then
 		extra = extra .. " -rr-ttl-max 60"
+	elseif CACHE_MODE == "30" then
+		extra = extra .. " -rr-ttl-max 30"
 	end
 	return extra
 end
@@ -282,9 +285,45 @@ local set_type = (NFTFLAG == "1") and "-nftset" or "-ipset"
 -- 注册节点列表专属直连组 (passwall_vps)
 if VPS_GROUP == "passwall_vps" then
 	table.insert(config_lines, "")
-	table.insert(config_lines, "# ── 节点列表专属直连组 (passwall_vps) 纯净加密 DoH ──")
-	table.insert(config_lines, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -group passwall_vps -exclude-default-group")
-	table.insert(config_lines, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -group passwall_vps -exclude-default-group")
+	table.insert(config_lines, "# ── 节点列表专属直连组 (passwall_vps) ──")
+	local vps_servers = {}
+	if VPS_DNS and VPS_DNS ~= "" then
+		for w in string.gmatch(VPS_DNS, "[^|]+") do
+			local s_entry = api.trim(w)
+			if s_entry ~= "" then
+				local dns = api.split(s_entry, ",")
+				local s_url = api.trim(dns[1])
+				local server_param = "server " .. s_url
+				if s_url:find("://", 1, true) then
+					if s_url:find("223.5.5.5", 1, true) then
+						server_param = "server-https " .. s_url .. " -host-name dns.alidns.com"
+					elseif s_url:find("180.184.1.1", 1, true) or s_url:find("180.184.2.2", 1, true) then
+						server_param = "server-https " .. s_url .. " -host-name doh.volcengine.com"
+					elseif s_url:find("1.12.12.12", 1, true) or s_url:find("120.53.53.53", 1, true) then
+						server_param = "server-https " .. s_url .. " -host-name doh.pub"
+					elseif s_url:lower():find("^https://") then
+						server_param = "server-https " .. s_url
+					elseif s_url:lower():find("^tls://") then
+						server_param = "server-tls " .. s_url
+					elseif s_url:lower():find("^tcp://") then
+						server_param = "server-tcp " .. s_url
+					end
+				end
+				if dns[2] and dns[2] ~= "" then
+					server_param = server_param .. " -host-ip " .. api.trim(dns[2]):gsub("^%[(.*)%]$", "%1")
+				end
+				table.insert(vps_servers, server_param .. " -group passwall_vps -exclude-default-group")
+			end
+		end
+	end
+	if #vps_servers == 0 then
+		table.insert(vps_servers, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -group passwall_vps -exclude-default-group")
+		table.insert(vps_servers, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -group passwall_vps -exclude-default-group")
+	end
+	for _, s_line in ipairs(vps_servers) do
+		table.insert(config_lines, s_line)
+	end
+
 	table.insert(config_lines, "")
 	table.insert(config_lines, "# ── 节点列表专属直连组规则作用域 (passwall_vps) ──")
 	table.insert(config_lines, "group-begin passwall_vps -inherit none")

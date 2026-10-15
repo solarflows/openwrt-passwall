@@ -191,82 +191,55 @@ if has_smartdns then
 	o.rmempty = false
 	o:depends("dns_shunt", "smartdns-shared")
 	o.description = translate("You only need to configure domestic DNS in SmartDNS, and fill in the domestic DNS group name here (default: cn).")
+end
 
-	local function bind_global_opt(opt_obj)
-		local orig_cfgvalue = opt_obj.cfgvalue
-		opt_obj.cfgvalue = function(self, section)
-			local val = m:get(section, self.option)
-			if val == nil then
-				val = m:get("@global_optimize[0]", self.option)
-			end
-			if val ~= nil then return val end
-			if orig_cfgvalue then return orig_cfgvalue(self, section) end
-			return self.default
-		end
-		local orig_write = opt_obj.write
-		opt_obj.write = function(self, section, value)
-			if m:get("@global_optimize[0]", self.option) ~= nil then
-				m:del("@global_optimize[0]", self.option)
-			end
-			if orig_write then
-				return orig_write(self, section, value)
-			else
-				return self.map:set(section, self.option, value)
-			end
-		end
-	end
+-- 默认 DNS (托底解析策略)
+local desc = translate("When not matching any domain name list:")
+	.. "<br />• " .. translate("Remote DNS: Can avoid more DNS leaks, but some domestic domain names maybe to proxy!")
+	.. "<br />• " .. translate("Direct DNS: Internet experience may be better, but DNS will be leaked!")
 
-	o = s:taboption("DNS", Flag, "smartdns_vps_group", translate("SmartDNS Dedicated Node Direct Group (passwall_vps)"),
-		translate("Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."))
-	o.default = "1"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
+o = s:taboption("DNS", ListValue, "chinadns_ng_default_tag", translate("Default DNS"))
+o.default = "none"
+o:value("gfw", translate("Remote DNS"))
+o:value("chn", translate("Direct DNS"))
+o:value("none", translate("Smart, Do not accept no-ip reply from Direct DNS"))
+o:value("none_noip", translate("Smart, Accept no-ip reply from Direct DNS"))
+o.description = desc
+	.. "<br />• " .. translate("Smart: Forward to both direct and remote DNS, if the direct DNS resolution result is a mainland China IP, then use the direct result, otherwise use the remote result.")
+	.. "<br />• " .. translate("In smart mode, no-ip reply from Direct DNS:")
+	.. "<br />&nbsp;&nbsp;&nbsp;&nbsp;- " .. translate("Do not accept: Wait and use Remote DNS Reply.")
+	.. "<br />&nbsp;&nbsp;&nbsp;&nbsp;- " .. translate("Accept: Trust the Reply, using this option can improve DNS resolution speeds for some mainland IPv4-only sites.")
+o:depends({dns_shunt = "chinadns-ng", tcp_proxy_mode = "proxy", chn_list = "direct"})
 
-	o = s:taboption("DNS", Value, "smartdns_vps_group_custom", translate("Custom Node Direct Group Name"),
-		translate("Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."))
-	o.placeholder = "passwall_vps"
-	o:depends({dns_shunt = "smartdns-shared", smartdns_vps_group = "1"})
-	bind_global_opt(o)
+o = s:taboption("DNS", ListValue, "use_default_dns", translate("Default DNS"))
+o.default = "direct"
+o:value("remote", translate("Remote DNS"))
+o:value("direct", translate("Direct DNS"))
+o.description = desc
+o:depends({dns_shunt = "dnsmasq", tcp_proxy_mode = "proxy", chn_list = "direct"})
 
-	o = s:taboption("DNS", Flag, "smartdns_split_shunt", translate("SmartDNS Per-Rule Shunt Strategy"),
-		translate("Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."))
-	o.default = "0"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
+if has_smartdns then
+	o = s:taboption("DNS", ListValue, "smartdns_default_dns", translate("Default DNS"))
+	o.default = "direct"
+	o:value("remote", translate("Remote DNS"))
+	o:value("direct", translate("Direct DNS"))
+	o:value("auto", translate("Auto"))
+	o.description = desc
+		.. "<br />• " .. translate("Auto: Prefer mainland China IPs returned by direct DNS and fall back to remote DNS when no usable result is available.")
+	o:depends({dns_shunt = "smartdns", tcp_proxy_mode = "proxy", chn_list = "direct"})
+	o:depends({dns_shunt = "smartdns-shared", tcp_proxy_mode = "proxy", chn_list = "direct"})
+end
 
-	o = s:taboption("DNS", ListValue, "smartdns_cache_mode", translate("SmartDNS Proxy Cache Mode"),
-		translate("Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency."))
-	o:value("default", translate("Default (SmartDNS Global Policy)"))
-	o:value("300", translate("Short TTL (5 Minutes / 300s, Recommended)"))
-	o:value("60", translate("Very Short TTL (1 Minute / 60s)"))
-	o:value("nocache", translate("Disable Cache (-no-cache)"))
-	o.default = "300"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
+o = s:taboption("DNS", Flag, "dns_redirect", translate("DNS Redirect"), translate("Force special DNS server to need proxy devices."))
+o.default = "1"
+o.rmempty = false
 
-	o = s:taboption("DNS", Flag, "smartdns_serve_expired", translate("SmartDNS Proxy Serve Expired (Optimistic Cache)"),
-		translate("Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."))
-	o.default = "1"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
-
-	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"),
-		translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."))
-	o.default = "1"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
-
-	o = s:taboption("DNS", Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"),
-		translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."))
-	o.default = "1"
-	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
-	bind_global_opt(o)
+o = s:taboption("DNS", Flag, "force_https_soa", translate("Force HTTPS SOA"), translate("Force queries with qtype 65 to respond with an SOA record."))
+o.default = "0"
+o:depends({dns_shunt = "chinadns-ng"})
+if has_smartdns then
+	o:depends({dns_shunt = "smartdns"})
+	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))
@@ -499,16 +472,6 @@ o:depends({xray_dns_mode = "doh"})
 o:depends({singbox_dns_mode = "doh"})
 o:depends({singbox_dns_mode = "http3"})
 
-o = s:taboption("DNS", Value, "remote_dns_client_ip", translate("EDNS Client Subnet"))
-o.description = translate("Notify the DNS server when the DNS query is notified, the location of the client (cannot be a private IP address).") .. "<br />" ..
-		translate("This feature requires the DNS server to support the Edns Client Subnet (RFC7871).")
-o.datatype = "ipaddr"
-o:depends({dns_mode = "sing-box"})
-o:depends({dns_mode = "xray"})
-o:depends("dns_shunt", "smartdns")
-o:depends("dns_shunt", "smartdns-shared")
-o:depends("_node_sel_shunt", "1")
-
 o = s:taboption("DNS", Flag, "remote_fakedns", "FakeDNS", translate("Use FakeDNS work in the domain that proxy."))
 o.default = "0"
 o:depends({dns_mode = "sing-box", dns_shunt = "dnsmasq"})
@@ -519,7 +482,6 @@ o:depends({dns_mode = "xray", dns_shunt = "dnsmasq"})
 o:depends({dns_mode = "xray", dns_shunt = "chinadns-ng"})
 o:depends({smartdns_dns_mode = "xray", dns_shunt = "smartdns"})
 o:depends({smartdns_dns_mode = "xray", dns_shunt = "smartdns-shared"})
---o:depends("_node_sel_shunt", "1")
 o.validate = function(self, value, t)
 	if value and value == "1" then
 		local _dns_mode = s.fields["dns_mode"]:formvalue(t)
@@ -544,55 +506,131 @@ o:depends({dns_mode = "sing-box", dns_shunt = "chinadns-ng"})
 o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns"})
 o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns-shared"})
 
-o = s:taboption("DNS", ListValue, "chinadns_ng_default_tag", translate("Default DNS"))
-o.default = "none"
-o:value("gfw", translate("Remote DNS"))
-o:value("chn", translate("Direct DNS"))
-o:value("none", translate("Smart, Do not accept no-ip reply from Direct DNS"))
-o:value("none_noip", translate("Smart, Accept no-ip reply from Direct DNS"))
-local desc = "<ul>"
-		.. "<li>" .. translate("When not matching any domain name list:") .. "</li>"
-		.. "<li>" .. translate("Remote DNS: Can avoid more DNS leaks, but some domestic domain names maybe to proxy!") .. "</li>"
-		.. "<li>" .. translate("Direct DNS: Internet experience may be better, but DNS will be leaked!") .. "</li>"
-o.description = desc
-		.. "<li>" .. translate("Smart: Forward to both direct and remote DNS, if the direct DNS resolution result is a mainland China IP, then use the direct result, otherwise use the remote result.") .. "</li>"
-		.. "<li>" .. translate("In smart mode, no-ip reply from Direct DNS:") .. "</li>"
-		.. "<li>" .. translate("Do not accept: Wait and use Remote DNS Reply.") .. "</li>"
-		.. "<li>" .. translate("Accept: Trust the Reply, using this option can improve DNS resolution speeds for some mainland IPv4-only sites.") .. "</li>"
-		.. "</ul>"
-o:depends({dns_shunt = "chinadns-ng", tcp_proxy_mode = "proxy", chn_list = "direct"})
+o = s:taboption("DNS", Value, "remote_dns_client_ip", translate("EDNS Client Subnet"))
+o.description = translate("Notify the DNS server when the DNS query is notified, the location of the client (cannot be a private IP address).") .. "<br />" ..
+		translate("This feature requires the DNS server to support the Edns Client Subnet (RFC7871).")
+o.datatype = "ipaddr"
+o:depends({dns_mode = "sing-box"})
+o:depends({dns_mode = "xray"})
+o:depends("dns_shunt", "smartdns")
+o:depends("dns_shunt", "smartdns-shared")
+o:depends("_node_sel_shunt", "1")
 
-o = s:taboption("DNS", ListValue, "use_default_dns", translate("Default DNS"))
-o.default = "direct"
-o:value("remote", translate("Remote DNS"))
-o:value("direct", translate("Direct DNS"))
-o.description = desc .. "</ul>"
-o:depends({dns_shunt = "dnsmasq", tcp_proxy_mode = "proxy", chn_list = "direct"})
-
+-- ── SmartDNS-Shared 进阶优化配置 ──
 if has_smartdns then
-	o = s:taboption("DNS", ListValue, "smartdns_default_dns", translate("Default DNS"))
-	o.default = "direct"
-	o:value("remote", translate("Remote DNS"))
-	o:value("direct", translate("Direct DNS"))
-	o:value("auto", translate("Auto"))
-	o.description = desc
-		.. "<li>" .. translate("Auto: Prefer mainland China IPs returned by direct DNS and fall back to remote DNS when no usable result is available.") .. "</li>"
-		.. "</ul>"
-	o:depends({dns_shunt = "smartdns", tcp_proxy_mode = "proxy", chn_list = "direct"})
-	o:depends({dns_shunt = "smartdns-shared", tcp_proxy_mode = "proxy", chn_list = "direct"})
-end
+	local function bind_global_opt(opt_obj)
+		local orig_cfgvalue = opt_obj.cfgvalue
+		opt_obj.cfgvalue = function(self, section)
+			local val = m:get(section, self.option)
+			if val == nil then
+				val = m:get("@global_optimize[0]", self.option)
+			end
+			if val ~= nil then return val end
+			if orig_cfgvalue then return orig_cfgvalue(self, section) end
+			return self.default
+		end
+		local orig_write = opt_obj.write
+		opt_obj.write = function(self, section, value)
+			if m:get("@global_optimize[0]", self.option) ~= nil then
+				m:del("@global_optimize[0]", self.option)
+			end
+			if orig_write then
+				return orig_write(self, section, value)
+			else
+				return self.map:set(section, self.option, value)
+			end
+		end
+	end
 
-o = s:taboption("DNS", Flag, "force_https_soa", translate("Force HTTPS SOA"), translate("Force queries with qtype 65 to respond with an SOA record."))
-o.default = "0"
-o:depends({dns_shunt = "chinadns-ng"})
-if has_smartdns then
-	o:depends({dns_shunt = "smartdns"})
-	o:depends({dns_shunt = "smartdns-shared"})
-end
+	o = s:taboption("DNS", Flag, "smartdns_vps_group", translate("SmartDNS Dedicated Node Direct Group (passwall_vps)"),
+		translate("Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
 
-o = s:taboption("DNS", Flag, "dns_redirect", translate("DNS Redirect"), translate("Force special DNS server to need proxy devices."))
-o.default = "1"
-o.rmempty = false
+	o = s:taboption("DNS", DynamicList, "smartdns_vps_dns", translate("Node Direct DNS Upstreams"),
+		translate("Encrypted DoH or IP DNS servers used by the node direct group (passwall_vps). Default uses pure Anycast DoH (AliDNS + Volcano Engine)."))
+	o:value("https://223.5.5.5/dns-query", "AliDNS DoH (https://223.5.5.5/dns-query)")
+	o:value("https://180.184.1.1/dns-query", "VolcanoEngine DoH (https://180.184.1.1/dns-query)")
+	o:value("https://1.12.12.12/dns-query", "DNSPod DoH (https://1.12.12.12/dns-query)")
+	o:value("223.5.5.5", "AliDNS (223.5.5.5)")
+	o:value("119.29.29.29", "DNSPod (119.29.29.29)")
+	o:depends({dns_shunt = "smartdns-shared", smartdns_vps_group = "1"})
+	bind_global_opt(o)
+	o.validate = function(self, value, section)
+		local vps_group_val = s.fields["smartdns_vps_group"] and s.fields["smartdns_vps_group"]:formvalue(section)
+		if vps_group_val == "1" then
+			local is_empty = false
+			if not value then
+				is_empty = true
+			elseif type(value) == "table" then
+				local has_valid = false
+				for _, v in ipairs(value) do
+					if api.trim(v) ~= "" then
+						has_valid = true
+						break
+					end
+				end
+				if not has_valid then is_empty = true end
+			elseif type(value) == "string" and api.trim(value) == "" then
+				is_empty = true
+			end
+			if is_empty then
+				return nil, translate("Node Direct DNS Upstreams cannot be empty.")
+			end
+		end
+		return value
+	end
+	o.cfgvalue = function(self, section)
+		local v = m:get(section, self.option)
+		if not v or #v == 0 then
+			v = m:get("@global_optimize[0]", self.option)
+		end
+		if v and #v > 0 then return v end
+		return {"https://223.5.5.5/dns-query", "https://180.184.1.1/dns-query"}
+	end
+
+	o = s:taboption("DNS", Flag, "smartdns_split_shunt", translate("SmartDNS Per-Rule Shunt Strategy"),
+		translate("Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."))
+	o.default = "0"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", ListValue, "smartdns_cache_mode", translate("SmartDNS Proxy Cache Mode"),
+		translate("Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching (e.g. URLTest / Failover) and dynamic CDN while maintaining low latency."))
+	o:value("30", translate("Ultra Short TTL (30s, Best for URLTest / Auto-Switch)"))
+	o:value("60", translate("Very Short TTL (1 Minute / 60s)"))
+	o:value("300", translate("Short TTL (5 Minutes / 300s, Single Static Node Only)"))
+	o:value("nocache", translate("Disable Cache (-no-cache)"))
+	o:value("default", translate("Default (SmartDNS Global Policy)"))
+	o.default = "30"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_serve_expired", translate("SmartDNS Proxy Serve Expired (Optimistic Cache)"),
+		translate("Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"),
+		translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"),
+		translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+end
 
 local prefer_nft = m:get("@global_forwarding[0]", "prefer_nft") == "1"
 local set_title = api.i18n.translate(prefer_nft and "Clear NFTSET on Reboot" or "Clear IPSET on Reboot")

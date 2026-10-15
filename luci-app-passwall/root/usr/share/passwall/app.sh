@@ -1956,10 +1956,15 @@ start_smartdns_shared() {
 	local smartdns_no_rule_addr=$(config_n_get @global[0] smartdns_no_rule_addr $(config_n_get @global_optimize[0] smartdns_no_rule_addr 1))
 	local smartdns_serve_expired=$(config_n_get @global[0] smartdns_serve_expired $(config_n_get @global_optimize[0] smartdns_serve_expired 1))
 	local smartdns_vps_group=$(config_n_get @global[0] smartdns_vps_group $(config_n_get @global_optimize[0] smartdns_vps_group 1))
-	local smartdns_vps_group_custom=$(config_n_get @global[0] smartdns_vps_group_custom $(config_n_get @global_optimize[0] smartdns_vps_group_custom))
+	local smartdns_vps_dns=$(config_n_get @global[0] smartdns_vps_dns)
+	if [ -z "${smartdns_vps_dns}" ] || [ "${smartdns_vps_dns}" = "nil" ]; then
+		smartdns_vps_dns="https://223.5.5.5/dns-query|https://180.184.1.1/dns-query"
+	else
+		smartdns_vps_dns=$(echo ${smartdns_vps_dns} | tr -s ' ' '|')
+	fi
 	local vps_group=""
 	if [ "${smartdns_vps_group}" = "1" ]; then
-		vps_group="${smartdns_vps_group_custom:-passwall_vps}"
+		vps_group="passwall_vps"
 		echolog "  - 节点列表 DNS：使用 SmartDNS 专属直连组(${vps_group})"
 	else
 		vps_group="${group_domestic:-direct}"
@@ -1978,7 +1983,7 @@ start_smartdns_shared() {
 	local smartdns_conf="/tmp/etc/smartdns/${CONFIG}.conf"
 	lua "$APP_PATH/helper_smartdns_add_optimize.lua" -FLAG "default" -SMARTDNS_CONF "${smartdns_conf}" \
 		-LISTEN_PORT "${SMARTDNS_LISTEN_PORT}" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT}" -DNS_REDIRECT "${DNS_REDIRECT}" \
-		-LOCAL_GROUP "${group_domestic}" -VPS_GROUP "${vps_group}" -REMOTE_GROUP "passwall_proxy" \
+		-LOCAL_GROUP "${group_domestic}" -VPS_GROUP "${vps_group}" -VPS_DNS "${smartdns_vps_dns}" -REMOTE_GROUP "passwall_proxy" \
 		-LOCAL_DNS "${china_ng_local_dns}" \
 		-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
 		-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \

@@ -2340,11 +2340,14 @@ msgstr "SmartDNS 节点列表专属直连组 (passwall_vps)"
 msgid "Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."
 msgstr "创建专属独立分组 (passwall_vps) 并使用纯净加密 DoH 直连上游解析节点域名 (vpslist)，与国内运营商 ISP DNS 及普通缓存物理隔离。"
 
-msgid "Custom Node Direct Group Name"
-msgstr "自定义节点直连分组名称"
+msgid "Node Direct DNS Upstreams"
+msgstr "节点直连 DNS 上游"
 
-msgid "Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."
-msgstr "留空则自动创建并使用专属纯净加密组 (passwall_vps)；亦可指定分组名 (如 cn) 复用已有规则组。"
+msgid "Node Direct DNS Upstreams cannot be empty."
+msgstr "节点直连 DNS 上游不能为空。"
+
+msgid "Encrypted DoH or IP DNS servers used by the node direct group (passwall_vps). Default uses pure Anycast DoH (AliDNS + Volcano Engine)."
+msgstr "节点列表专属直连组 (passwall_vps) 所使用的加密 DoH 或 IP DNS 服务器。默认使用纯净 Anycast DoH (阿里 + 火山引擎)。"
 
 msgid "Domestic group name"
 msgstr "国内分组名"
