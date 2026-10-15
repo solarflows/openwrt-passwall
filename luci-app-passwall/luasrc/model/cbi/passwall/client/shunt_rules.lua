@@ -261,7 +261,7 @@ ip_list.description = "<br /><ul>"
 
 o = s:option(Flag, "invert", "Invert", translate("Invert match result.") .. " " .. translate("Only support Sing-Box."))
 
-local is_smartdns = (api.uci_get_c("@global[0]", "dns_shunt") == "smartdns")
+local is_smartdns = (api.uci_get_c("@global[0]", "dns_shunt") == "smartdns" or api.uci_get_c("@global[0]", "dns_shunt") == "smartdns-shared")
 local use_group = ((api.uci_get_c("@global_optimize[0]", "smartdns_use_group") or api.uci_get_c("@global[0]", "smartdns_use_group") or "1") == "1")
 local split_shunt = ((api.uci_get_c("@global_optimize[0]", "smartdns_split_shunt") or "0") == "1")
 

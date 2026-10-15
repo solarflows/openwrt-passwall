@@ -341,6 +341,8 @@ function index_status()
 	if dns_shunt == "smartdns" then
 		local config_file = api.TMP_PATH .. "/acl/default/smartdns.conf"
 		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep -F %s | grep 'smartdns' >/dev/null" % util.shellquote(config_file)) == 0
+	elseif dns_shunt == "smartdns-shared" then
+		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep 'smartdns' >/dev/null") == 0
 	elseif dns_shunt == "chinadns-ng" then
 		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep '%s/bin/' | grep 'default' | grep 'chinadns_ng' >/dev/null" % api.TMP_PATH) == 0
 	else
@@ -556,7 +558,7 @@ function set_node()
 		if node_protocol == "_shunt" then
 			local node_type = uci_get(section, "type")
 			local dns_shunt = uci_get(type, "dns_shunt")
-			local dns_key = (dns_shunt == "smartdns") and "smartdns_dns_mode" or "dns_mode"
+			local dns_key = (dns_shunt == "smartdns" or dns_shunt == "smartdns-shared") and "smartdns_dns_mode" or "dns_mode"
 			local dns_mode = uci_get(type, dns_key)
 			local new_dns_mode = (node_type == "Xray") and "xray" or "sing-box"
 			if dns_mode ~= new_dns_mode then
