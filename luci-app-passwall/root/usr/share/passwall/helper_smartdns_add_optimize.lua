@@ -980,16 +980,12 @@ if #config_lines > 0 then
 	f_out:close()
 end
 
-api.remove(SMARTDNS_CONF)
-fs.symlink(TMP_CONF_FILE, SMARTDNS_CONF)
-sys.call("mkdir -p /etc/smartdns && touch /etc/smartdns/custom.conf")
-local conf_line = string.format("conf-file %s", string.gsub(SMARTDNS_CONF, "passwall", "passwall*"))
-if sys.call(string.format('grep -q "%s" /etc/smartdns/custom.conf', conf_line)) ~= 0 then
-	sys.call('sed -i "/passwall/d" /etc/smartdns/custom.conf >/dev/null 2>&1')
-	sys.call(string.format('echo "%s" >> /etc/smartdns/custom.conf', conf_line))
-end
-if DNS_REDIRECT then
-	log("  - SmartDNS (规则组沙盒模式) 已作为系统 DNS 重定向直接承载！")
-else
-	log("  - SmartDNS (规则组沙盒模式) 已作为上游启动！")
-end
+	if SMARTDNS_CONF and SMARTDNS_CONF ~= "" and SMARTDNS_CONF ~= TMP_CONF_FILE then
+		api.remove(SMARTDNS_CONF)
+		fs.symlink(TMP_CONF_FILE, SMARTDNS_CONF)
+	end
+	if DNS_REDIRECT then
+		log("  - SmartDNS 已作为系统 DNS 重定向直接承载！")
+	else
+		log("  - SmartDNS 已作为上游启动！")
+	end
