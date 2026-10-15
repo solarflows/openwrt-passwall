@@ -312,13 +312,13 @@ if VPS_GROUP == "passwall_vps" then
 				if dns[2] and dns[2] ~= "" then
 					server_param = server_param .. " -host-ip " .. api.trim(dns[2]):gsub("^%[(.*)%]$", "%1")
 				end
-				table.insert(vps_servers, server_param .. " -group passwall_vps -exclude-default-group")
+				table.insert(vps_servers, server_param .. " -set-mark 255 -group passwall_vps -exclude-default-group")
 			end
 		end
 	end
 	if #vps_servers == 0 then
-		table.insert(vps_servers, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -group passwall_vps -exclude-default-group")
-		table.insert(vps_servers, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -group passwall_vps -exclude-default-group")
+		table.insert(vps_servers, "server-https https://223.5.5.5/dns-query -host-name dns.alidns.com -set-mark 255 -group passwall_vps -exclude-default-group")
+		table.insert(vps_servers, "server-https https://180.184.1.1/dns-query -host-name doh.volcengine.com -set-mark 255 -group passwall_vps -exclude-default-group")
 	end
 	for _, s_line in ipairs(vps_servers) do
 		table.insert(config_lines, s_line)
