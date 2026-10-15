@@ -2354,3 +2354,10 @@ msgstr "国内分组名"
 
 msgid "You only need to configure domestic DNS in SmartDNS, and fill in the domestic DNS group name here (default: cn)."
 msgstr "SmartDNS只需配置国内DNS即可，在此填入国内DNS分组名称（默认为 cn）。"
+
+msgid "Disable Cache (-no-cache, Locked by Shunt Engine)"
+msgstr "实时穿透 (-no-cache，已被分流引擎锁死)"
+
+msgid "In shunt mode, proxy domains are locked to real-time direct query (-no-cache) to ensure URLTest latency probing and failover take effect immediately without stale cache."
+msgstr "在分流模式下，代理域名已被引擎锁定为实时穿透 (-no-cache)，确保 URLTest 延迟探测与故障转移瞬间生效，彻底杜绝陈旧脏缓存。"
+

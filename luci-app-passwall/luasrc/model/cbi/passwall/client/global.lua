@@ -607,14 +607,22 @@ if has_smartdns then
 	o:value("default", translate("Default (SmartDNS Global Policy)"))
 	o.default = "30"
 	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
+	o:depends({dns_shunt = "smartdns-shared", _node_sel_shunt = ""})
 	bind_global_opt(o)
+
+	o = s:taboption("DNS", DummyValue, "_smartdns_cache_mode_locked", translate("SmartDNS Proxy Cache Mode"))
+	o.rawhtml = true
+	o.cfgvalue = function(t, n)
+		return string.format('<span style="color: #107c41; font-weight: bold;">%s</span>', translate("Disable Cache (-no-cache, Locked by Shunt Engine)"))
+	end
+	o.description = translate("In shunt mode, proxy domains are locked to real-time direct query (-no-cache) to ensure URLTest latency probing and failover take effect immediately without stale cache.")
+	o:depends({dns_shunt = "smartdns-shared", _node_sel_shunt = "1"})
 
 	o = s:taboption("DNS", Flag, "smartdns_serve_expired", translate("SmartDNS Proxy Serve Expired (Optimistic Cache)"),
 		translate("Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."))
 	o.default = "1"
 	o.rmempty = false
-	o:depends("dns_shunt", "smartdns-shared")
+	o:depends({dns_shunt = "smartdns-shared", _node_sel_shunt = ""})
 	bind_global_opt(o)
 
 	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"),

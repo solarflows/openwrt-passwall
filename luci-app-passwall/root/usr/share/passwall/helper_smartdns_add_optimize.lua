@@ -35,16 +35,17 @@ local CACHE_MODE = var["-CACHE_MODE"] or "default"
 local NO_RULE_ADDR = var["-NO_RULE_ADDR"] or "0"
 local SPLIT_SHUNT = var["-SPLIT_SHUNT"] or "0"
 local SERVE_EXPIRED = var["-SERVE_EXPIRED"] or "1"
+local IS_SHUNT_NODE = api.uci_get_c(NODE, "protocol") == "_shunt"
 
 local function get_remote_rule_extra()
 	local extra = ""
-	if SERVE_EXPIRED == "0" then
+	if IS_SHUNT_NODE or SERVE_EXPIRED == "0" then
 		extra = extra .. " -no-serve-expired"
 	end
 	if NO_IP_ALIAS == "1" then
 		extra = extra .. " -no-ip-alias"
 	end
-	if CACHE_MODE == "nocache" then
+	if IS_SHUNT_NODE or CACHE_MODE == "nocache" then
 		extra = extra .. " -no-cache"
 	elseif CACHE_MODE == "300" then
 		extra = extra .. " -rr-ttl-max 300"
@@ -70,7 +71,6 @@ local config_lines = {}
 local split_rules_list = {}
 local split_rules_map = {}
 local USE_GEOVIEW = api.uci_get_c("@global_rules[0]", "enable_geoview")
-local IS_SHUNT_NODE = api.uci_get_c(NODE, "protocol") == "_shunt"
 
 if not api.is_finded("geoview") then
 	USE_GEOVIEW = "0"
