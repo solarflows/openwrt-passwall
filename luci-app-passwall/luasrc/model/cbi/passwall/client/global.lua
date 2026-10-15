@@ -179,7 +179,8 @@ o.write = function(self, section, value)
 	return ListValue.write(self, section, value)
 end
 if has_smartdns then
-	o:value("smartdns", "SmartDNS")
+	o:value("smartdns", "SmartDNS (" .. translate("Standalone Daemon") .. ")")
+	o:value("smartdns-shared", "SmartDNS (" .. translate("Host Shared / Cache Optimized") .. ")")
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))
@@ -190,6 +191,7 @@ o:depends({dns_shunt = "dnsmasq"})
 o:depends({dns_shunt = "chinadns-ng"})
 if has_smartdns then
 	o:depends({dns_shunt = "smartdns"})
+	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", Value, "direct_dns", translate("Direct DNS"))
@@ -220,7 +222,7 @@ function dns_mode_save(section)
 			local type_val = v.type
 			if type_val and (type_val == "Xray" or type_val == "sing-box") then
 				local dns_shunt_val = s.fields["dns_shunt"]:formvalue(section)
-				local dns_mode_val = (dns_shunt_val ~= "smartdns") and "dns_mode" or "smartdns_dns_mode"
+				local dns_mode_val = (dns_shunt_val ~= "smartdns" and dns_shunt_val ~= "smartdns-shared") and "dns_mode" or "smartdns_dns_mode"
 				local current_val = m:get(section, dns_mode_val) or ""
 				local new_val = (type_val == "Xray") and "xray" or "sing-box"
 
@@ -282,6 +284,7 @@ if has_smartdns then
 		o:value("xray", "Xray")
 	end
 	o:depends({ dns_shunt = "smartdns", _node_sel_shunt = "" })
+	o:depends({ dns_shunt = "smartdns-shared", _node_sel_shunt = "" })
 	o.write = function(self, section, value)
 		if value == "socks" then
 			m:del(section, "v2ray_dns_mode")
@@ -316,6 +319,7 @@ if has_smartdns then
 	o:value("https://doh.libredns.gr/dns-query,116.202.176.26")
 	o:value("https://doh.libredns.gr/ads,116.202.176.26")
 	o:depends({ dns_shunt = "smartdns", smartdns_dns_mode = "socks" })
+	o:depends({ dns_shunt = "smartdns-shared", smartdns_dns_mode = "socks" })
 	o.cfgvalue = function(self, section)
 		return m:get(section, self.option) or {"tcp://1.1.1.1"}
 	end
@@ -417,6 +421,7 @@ o.datatype = "ipaddr"
 o:depends({dns_mode = "sing-box"})
 o:depends({dns_mode = "xray"})
 o:depends("dns_shunt", "smartdns")
+o:depends("dns_shunt", "smartdns-shared")
 o:depends("_node_sel_shunt", "1")
 
 o = s:taboption("DNS", Flag, "remote_fakedns", "FakeDNS", translate("Use FakeDNS work in the domain that proxy."))
@@ -424,9 +429,11 @@ o.default = "0"
 o:depends({dns_mode = "sing-box", dns_shunt = "dnsmasq"})
 o:depends({dns_mode = "sing-box", dns_shunt = "chinadns-ng"})
 o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns"})
+o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns-shared"})
 o:depends({dns_mode = "xray", dns_shunt = "dnsmasq"})
 o:depends({dns_mode = "xray", dns_shunt = "chinadns-ng"})
 o:depends({smartdns_dns_mode = "xray", dns_shunt = "smartdns"})
+o:depends({smartdns_dns_mode = "xray", dns_shunt = "smartdns-shared"})
 --o:depends("_node_sel_shunt", "1")
 o.validate = function(self, value, t)
 	if value and value == "1" then
@@ -450,6 +457,7 @@ o.default = "30"
 o:depends({dns_mode = "sing-box", dns_shunt = "dnsmasq"})
 o:depends({dns_mode = "sing-box", dns_shunt = "chinadns-ng"})
 o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns"})
+o:depends({smartdns_dns_mode = "sing-box", dns_shunt = "smartdns-shared"})
 
 o = s:taboption("DNS", ListValue, "chinadns_ng_default_tag", translate("Default DNS"))
 o.default = "none"
@@ -486,6 +494,13 @@ if has_smartdns then
 		.. "<li>" .. translate("Auto: Prefer mainland China IPs returned by direct DNS and fall back to remote DNS when no usable result is available.") .. "</li>"
 		.. "</ul>"
 	o:depends({dns_shunt = "smartdns", tcp_proxy_mode = "proxy", chn_list = "direct"})
+	o:depends({dns_shunt = "smartdns-shared", tcp_proxy_mode = "proxy", chn_list = "direct"})
+
+	o = s:taboption("DNS", Value, "group_domestic", translate("Domestic Group Name"),
+		translate("Specify the domestic upstream group name configured in system SmartDNS (default: cn)."))
+	o.default = "cn"
+	o.placeholder = "cn"
+	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", Flag, "force_https_soa", translate("Force HTTPS SOA"), translate("Force queries with qtype 65 to respond with an SOA record."))
@@ -493,6 +508,7 @@ o.default = "0"
 o:depends({dns_shunt = "chinadns-ng"})
 if has_smartdns then
 	o:depends({dns_shunt = "smartdns"})
+	o:depends({dns_shunt = "smartdns-shared"})
 end
 
 o = s:taboption("DNS", Flag, "dns_redirect", translate("DNS Redirect"), translate("Force special DNS server to need proxy devices."))
