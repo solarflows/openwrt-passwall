@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       passwall_version: ${{ steps.check_version.outputs.latest_version }}
+      previous_version: ${{ steps.check_version.outputs.previous_version }}
       has_update: ${{ steps.check_version.outputs.has_update }}
       prerelease: ${{ steps.check_version.outputs.prerelease }}
     steps:
@@ -56,6 +57,7 @@ jobs:
             exit 0
           fi
           echo "Remote latest: $remote_latest_version"
+          echo "previous_version=${remote_latest_version}" >> $GITHUB_OUTPUT
 
           if [ "$latest_version" = "$remote_latest_version" ]; then
             echo "has_update=false" >> $GITHUB_OUTPUT
@@ -66,14 +68,43 @@ jobs:
       - name: Prepare release
         if: steps.check_version.outputs.has_update == 'true'
         run: |
-          cat << 'EOF' > release.txt
-          ![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)
+          git fetch --tags --force 2>/dev/null || true
+          latest_ver="${{ steps.check_version.outputs.latest_version }}"
+          prev_ver="${{ steps.check_version.outputs.previous_version }}"
 
-          > 📌 **源码分支**：[`custom`](https://github.com/${{ env.passwall }}/tree/custom) / [`main`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 `upstream` 同步变基构建）
+          changelog=""
+          compare_link=""
+          if [ -n "$prev_ver" ] && git rev-parse -q --verify "refs/tags/${prev_ver}" >/dev/null 2>&1; then
+            changelog=$(git log --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" "${prev_ver}..HEAD")
+            compare_url="https://github.com/${{ env.passwall }}/compare/${prev_ver}...${latest_ver}"
+            compare_link="> 🔍 **完整变更对比**：[${prev_ver} ... ${latest_ver}](${compare_url})"
+          fi
 
-          ### 📌 变更说明
+          if [ -z "$changelog" ]; then
+            changelog=$(git log -n 10 --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" HEAD)
+          fi
+
+          cat << EOF > release.txt
+          ![](https://img.shields.io/github/downloads/${{ env.passwall }}/${latest_ver}/total?style=flat-square)
+
+          > 📌 **源码分支**：[\`custom\`](https://github.com/${{ env.passwall }}/tree/custom) / [\`main\`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 \`upstream\` 同步变基构建）
+          ${compare_link}
+
+          ### 📝 本次更新日志 (${prev_ver:-init} -> ${latest_ver})
+
+          EOF
+
+          printf "%s\n\n" "$changelog" >> release.txt
+
+          cat << 'EOF' >> release.txt
+          ---
+
+          ### 📌 核心功能与架构特性
 
           本仓库基于官方 PassWall 最新版本构建，保留官方原有功能，主要包含以下调整：
+          * **SmartDNS 双模式架构**：
+            * **系统共享/单进程优化 (`smartdns-shared`)**：复用宿主系统 SmartDNS 单进程，共享国内 warm 缓存池，`:15355` 直连承载跳过 dnsmasq 中间层；`:15354@lo` 独占纯净 Anycast DoH（阿里+字节）专属节点直连组（`passwall_vps`），控制面与数据面物理隔离。
+            * **独立守护进程 (`smartdns`)**：100% 保持官方上游独立子进程原生逻辑（0 diff、0 hook），内置独立 WebUI 与日志。
           * **订阅与节点处理**：订阅写入改用 `libuci-lua` 库直写；节点过滤增加去重缓存；节点下拉菜单数据池化以减小页面体积。
           * **防火墙与转发**：出站链增加 `PSW_FAST_RETURN` 短路规则，调整 `rp_filter` 参数以减少出站开销。
           * **SmartDNS 选项**：增加规则组沙盒模式（`group-begin/match`），支持针对代理域名设置缓存 TTL（默认/300s/60s/关闭）。
