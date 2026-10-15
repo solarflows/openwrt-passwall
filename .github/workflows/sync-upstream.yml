@@ -115,6 +115,27 @@ jobs:
                 echo "Auto-resolved passwall.po translation conflict."
               fi
 
+              # Auto-resolve global.lua conflict by preserving advanced log features
+              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/model/cbi/passwall/client/global\.lua"; then
+                python3 -c "import re, sys; p='luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', r'\1\n\n\2', c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+                git add luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua
+                echo "Auto-resolved global.lua conflict preserving custom features."
+              fi
+
+              # Auto-resolve app.sh smartdns hook conflict
+              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
+                python3 -c "
+import re, sys
+p = 'luci-app-passwall/root/usr/share/passwall/app.sh'
+c = open(p, 'r', encoding='utf-8').read()
+c = re.sub(r'<{7}[^\n]*\n(.*?\blocal smartdns_listen_port.*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: re.sub(r'(lua \"?\$APP_PATH/helper_smartdns_add\.lua\"?.*?;;\n|\s*return 1\s*\n\s*\})', r'if ! fork_optimize_smartdns; then\n\t\t\t\t\1\n\t\t\tfi', m.group(1), flags=re.S) if 'fork_optimize_smartdns' not in m.group(1) else m.group(1), c, flags=re.S)
+c = re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S)
+c = re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n', c, flags=re.S)
+open(p, 'w', encoding='utf-8').write(c)
+sys.exit(0 if '<<<<<<<' not in c else 1)
+" && git add luci-app-passwall/root/usr/share/passwall/app.sh && echo "Auto-resolved app.sh conflict."
+              fi
+
               REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
               if [ -z "$REMAINING_CONFLICTS" ]; then
                 if git diff --cached --quiet; then
