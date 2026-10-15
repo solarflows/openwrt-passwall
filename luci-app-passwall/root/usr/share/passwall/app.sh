@@ -1950,13 +1950,13 @@ start_smartdns_shared() {
 	local smartdns_default_dns=$(config_n_get @global[0] smartdns_default_dns direct)
 	local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
 
-	local smartdns_split_shunt=$(config_n_get @global_optimize[0] smartdns_split_shunt 0)
-	local smartdns_no_ip_alias=$(config_n_get @global_optimize[0] smartdns_no_ip_alias 1)
-	local smartdns_cache_mode=$(config_n_get @global_optimize[0] smartdns_cache_mode "300")
-	local smartdns_no_rule_addr=$(config_n_get @global_optimize[0] smartdns_no_rule_addr 1)
-	local smartdns_serve_expired=$(config_n_get @global_optimize[0] smartdns_serve_expired 1)
-	local smartdns_vps_group=$(config_n_get @global_optimize[0] smartdns_vps_group 1)
-	local smartdns_vps_group_custom=$(config_n_get @global_optimize[0] smartdns_vps_group_custom)
+	local smartdns_split_shunt=$(config_n_get @global[0] smartdns_split_shunt $(config_n_get @global_optimize[0] smartdns_split_shunt 0))
+	local smartdns_no_ip_alias=$(config_n_get @global[0] smartdns_no_ip_alias $(config_n_get @global_optimize[0] smartdns_no_ip_alias 1))
+	local smartdns_cache_mode=$(config_n_get @global[0] smartdns_cache_mode $(config_n_get @global_optimize[0] smartdns_cache_mode "300"))
+	local smartdns_no_rule_addr=$(config_n_get @global[0] smartdns_no_rule_addr $(config_n_get @global_optimize[0] smartdns_no_rule_addr 1))
+	local smartdns_serve_expired=$(config_n_get @global[0] smartdns_serve_expired $(config_n_get @global_optimize[0] smartdns_serve_expired 1))
+	local smartdns_vps_group=$(config_n_get @global[0] smartdns_vps_group $(config_n_get @global_optimize[0] smartdns_vps_group 1))
+	local smartdns_vps_group_custom=$(config_n_get @global[0] smartdns_vps_group_custom $(config_n_get @global_optimize[0] smartdns_vps_group_custom))
 	local vps_group=""
 	if [ "${smartdns_vps_group}" = "1" ]; then
 		vps_group="${smartdns_vps_group_custom:-passwall_vps}"
@@ -1979,6 +1979,7 @@ start_smartdns_shared() {
 	lua "$APP_PATH/helper_smartdns_add_optimize.lua" -FLAG "default" -SMARTDNS_CONF "${smartdns_conf}" \
 		-LISTEN_PORT "${SMARTDNS_LISTEN_PORT}" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT}" -DNS_REDIRECT "${DNS_REDIRECT}" \
 		-LOCAL_GROUP "${group_domestic}" -VPS_GROUP "${vps_group}" -REMOTE_GROUP "passwall_proxy" \
+		-LOCAL_DNS "${china_ng_local_dns}" \
 		-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
 		-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \
 		-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" \

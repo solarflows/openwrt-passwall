@@ -191,6 +191,82 @@ if has_smartdns then
 	o.rmempty = false
 	o:depends("dns_shunt", "smartdns-shared")
 	o.description = translate("You only need to configure domestic DNS in SmartDNS, and fill in the domestic DNS group name here (default: cn).")
+
+	local function bind_global_opt(opt_obj)
+		local orig_cfgvalue = opt_obj.cfgvalue
+		opt_obj.cfgvalue = function(self, section)
+			local val = m:get(section, self.option)
+			if val == nil then
+				val = m:get("@global_optimize[0]", self.option)
+			end
+			if val ~= nil then return val end
+			if orig_cfgvalue then return orig_cfgvalue(self, section) end
+			return self.default
+		end
+		local orig_write = opt_obj.write
+		opt_obj.write = function(self, section, value)
+			if m:get("@global_optimize[0]", self.option) ~= nil then
+				m:del("@global_optimize[0]", self.option)
+			end
+			if orig_write then
+				return orig_write(self, section, value)
+			else
+				return self.map:set(section, self.option, value)
+			end
+		end
+	end
+
+	o = s:taboption("DNS", Flag, "smartdns_vps_group", translate("SmartDNS Dedicated Node Direct Group (passwall_vps)"),
+		translate("Create an independent group (passwall_vps) with clean DoH upstreams dedicated to resolving node domain names (vpslist), completely isolated from domestic ISP DNS."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Value, "smartdns_vps_group_custom", translate("Custom Node Direct Group Name"),
+		translate("Leave empty to use dedicated encrypted group (passwall_vps); specify a group name (e.g. cn) to reuse an existing group."))
+	o.placeholder = "passwall_vps"
+	o:depends({dns_shunt = "smartdns-shared", smartdns_vps_group = "1"})
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_split_shunt", translate("SmartDNS Per-Rule Shunt Strategy"),
+		translate("Enable per-rule atomic domain sets and independent DNS routing/caching strategy for shunt rules."))
+	o.default = "0"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", ListValue, "smartdns_cache_mode", translate("SmartDNS Proxy Cache Mode"),
+		translate("Control DNS record caching for proxy domains. Shorter TTL allows fast adaptation to node switching and dynamic CDN while maintaining low latency."))
+	o:value("default", translate("Default (SmartDNS Global Policy)"))
+	o:value("300", translate("Short TTL (5 Minutes / 300s, Recommended)"))
+	o:value("60", translate("Very Short TTL (1 Minute / 60s)"))
+	o:value("nocache", translate("Disable Cache (-no-cache)"))
+	o.default = "300"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_serve_expired", translate("SmartDNS Proxy Serve Expired (Optimistic Cache)"),
+		translate("Allow proxy and shunt domains to use expired cache and revalidate in background. Greatly enhances browsing and streaming smoothness during network jitter."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_no_ip_alias", translate("SmartDNS Disable IP Alias (-no-ip-alias)"),
+		translate("Ignore global ip-alias rules for proxy domain rules to prevent IP remapping from polluting PassWall routing sets."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
+
+	o = s:taboption("DNS", Flag, "smartdns_no_rule_addr", translate("SmartDNS Skip Static Address Rules (-no-rule-addr)"),
+		translate("Skip static address / hosts rules in SmartDNS for proxy domains, preventing local hijack from intercepting proxy traffic."))
+	o.default = "1"
+	o.rmempty = false
+	o:depends("dns_shunt", "smartdns-shared")
+	bind_global_opt(o)
 end
 
 o = s:taboption("DNS", ListValue, "direct_dns_mode", translate("Direct DNS") .. " " .. translate("Request protocol"))
