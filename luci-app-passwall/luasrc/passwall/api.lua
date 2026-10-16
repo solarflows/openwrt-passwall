@@ -100,10 +100,12 @@ function uci_get_c(section, option)
 end
 
 function uci_set_c(section, option, value)
+	_valid_nodes_cache = nil
 	return uci_set(c_config, section, option, value)
 end
 
 function uci_save_c(commit, apply)
+	_valid_nodes_cache = nil
 	return uci_save(uci, c_config, commit, apply)
 end
 
@@ -653,7 +655,25 @@ function get_domain_from_url(url)
 	return url
 end
 
-function get_valid_nodes()
+local _valid_nodes_cache = nil
+local _special_proto_trans = nil
+
+function clear_valid_nodes_cache()
+	_valid_nodes_cache = nil
+end
+
+function get_valid_nodes(force_reload)
+	if _valid_nodes_cache and not force_reload then
+		return _valid_nodes_cache
+	end
+	if not _special_proto_trans then
+		_special_proto_trans = {
+			_balancing = i18n.translatef("_balancing"),
+			_shunt = i18n.translatef("_shunt"),
+			_iface = i18n.translatef("_iface"),
+			_urltest = i18n.translatef("_urltest")
+		}
+	end
 	local show_node_info = uci_get_c("@global_other[0]", "show_node_info") or "0"
 	local nodes = {}
 	local default_nodes = {}
@@ -664,7 +684,8 @@ function get_valid_nodes()
 			local type_name = e.type
 			if e.type == "sing-box" then type_name = "Sing-Box" end
 			if e.protocol and (e.protocol == "_balancing" or e.protocol == "_shunt" or e.protocol == "_iface" or e.protocol == "_urltest") then
-				e["remark"] = trim("%s：[%s]" % {type_name .. " " .. i18n.translatef(e.protocol), e.remarks})
+				local proto_txt = _special_proto_trans[e.protocol] or i18n.translatef(e.protocol)
+				e["remark"] = trim("%s：[%s]" % {type_name .. " " .. proto_txt, e.remarks})
 				e["node_type"] = "special"
 				if not e.group or e.group == "" then
 					default_nodes[#default_nodes + 1] = e
@@ -723,6 +744,7 @@ function get_valid_nodes()
 	end)
 	for i = 1, #default_nodes do nodes[#nodes + 1] = default_nodes[i] end
 	for i = 1, #other_nodes do nodes[#nodes + 1] = other_nodes[i] end
+	_valid_nodes_cache = nodes
 	return nodes
 end
 

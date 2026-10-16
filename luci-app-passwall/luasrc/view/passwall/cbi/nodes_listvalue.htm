@@ -58,17 +58,19 @@ end
 local group_refs = {}
 local new_groups = {}
 for i, g in ipairs(group_order) do
-	-- 使用有序数组生成完整签名，不依赖 JSON 对象的字段顺序或哈希值
-	local signature = {g}
-	for _, item in ipairs(groups[g]) do
-		signature[#signature + 1] = {item.key, item.label}
+	-- 使用扁平有序字符串生成轻量完整签名，避免高频深度 json.stringify 性能损耗
+	local g_items = groups[g]
+	local sig_parts = { g, tostring(#g_items) }
+	for _, item in ipairs(g_items) do
+		sig_parts[#sig_parts + 1] = item.key
+		sig_parts[#sig_parts + 1] = item.label
 	end
-	local cache_key = json.stringify(signature)
+	local cache_key = table.concat(sig_parts, "\0")
 	local ref = group_cache[cache_key]
 	if not ref then
 		ref = cbid .. ".group." .. i
 		group_cache[cache_key] = ref
-		new_groups[ref] = groups[g]
+		new_groups[ref] = g_items
 	end
 	group_refs[i] = ref
 end
