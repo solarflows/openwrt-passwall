@@ -2162,6 +2162,63 @@ local function update_node(manual)
 	if manual ~= 1 then restart_required = true end
 end
 
+-- 判断是否为纯说明/通知/动态用量展示节点
+local function is_announcement_node(node)
+	if not node then return true end
+	local r = node.remarks or ""
+	local addr = node.address or ""
+	local port = tonumber(node.port) or 0
+	if addr == "127.0.0.1" or addr == "0.0.0.0" or addr:lower() == "localhost" or port == 0 then
+		return true
+	end
+	if r:find("剩余流量") or r:find("到期时间") or r:find("过期时间") or r:find("套餐剩余")
+		or r:find("有效期至") or r:find("流量剩余") or r:find("重置时间") or r:find("距离重置")
+		or r:find("官方网站") or r:find("官网地址") or r:find("最新网址") or r:find("禁止分享") then
+		return true
+	end
+	return false
+end
+
+-- 计算纯物理节点特征指纹（解耦动态展示用量与元数据）
+local function get_node_fingerprint(node_list)
+	if not node_list or #node_list == 0 then return "" end
+	local list_fingerprints = {}
+	for _, node in ipairs(node_list) do
+		local core_parts = {
+			node.type or "",
+			node.protocol or "",
+			node.address or "",
+			tostring(node.port or ""),
+			node.uuid or "",
+			node.password or "",
+			node.encryption or "",
+			node.method or "",
+			node.security or "",
+			node.tls or "",
+			node.tls_serverName or "",
+			node.transport or "",
+			node.tcp_guise or "",
+			node.ws_host or "",
+			node.ws_path or "",
+			node.h2_host or "",
+			node.h2_path or "",
+			node.xhttp_host or "",
+			node.xhttp_path or "",
+			node.grpc_serviceName or "",
+			node.flow or "",
+			node.fingerprint or ""
+		}
+		-- 清洗 remarks 中的动态流量与日期后缀后再作为辅助标识
+		local clean_remarks = (node.remarks or ""):gsub("%s+", "")
+			:gsub("[0-9%.]+%s*[KkMmGgTt][Bb]", "")
+			:gsub("%d%d%d%d[-/%.]%d%d?[-/%.]%d%d?", "")
+		tinsert(core_parts, clean_remarks)
+		tinsert(list_fingerprints, table.concat(core_parts, "|"))
+	end
+	table.sort(list_fingerprints)
+	return api.md5_string(table.concat(list_fingerprints, "\n"))
+end
+
 local function parse_link(raw, add_mode, group, sub_cfg)
 	if raw and #raw > 0 then
 		local cfgid
@@ -2225,9 +2282,9 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 							log('丢弃节点：' .. result.remarks .. " ，原因：" .. result.error_msg)
 						elseif not result.type then
 							log('丢弃节点：' .. result.remarks .. " ，找不到可使用二进制。")
-						elseif (add_mode == "2" and is_filter_keyword(keyword_filter, result.remarks)) or not result.address or result.remarks == "NULL" or result.address == "127.0.0.1" or
+						elseif (add_mode == "2" and (is_filter_keyword(keyword_filter, result.remarks) or is_announcement_node(result))) or not result.address or result.remarks == "NULL" or result.address == "127.0.0.1" or result.address == "0.0.0.0" or
 								(not datatypes.hostname(result.address) and not (api.is_ip(result.address))) then
-							log('丢弃过滤节点：' .. result.type .. ' 节点，' .. result.remarks)
+							log('丢弃过滤节点：' .. (result.type or '未知') .. ' 节点，' .. result.remarks)
 						else
 							tinsert(node_list, result)
 						end
@@ -2243,17 +2300,21 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 			end
 		end
 		if #node_list > 0 then
-			nodeResult[#nodeResult + 1] = {
-				remark = group,
-				list = node_list,
-				sub_cfg = sub_cfg
-			}
+			if add_mode ~= "2" then
+				nodeResult[#nodeResult + 1] = {
+					remark = group,
+					list = node_list,
+					sub_cfg = sub_cfg
+				}
+			end
 		end
 		log('成功解析【' .. group .. '】节点数量：' .. #node_list)
+		return node_list
 	else
 		if add_mode == "2" then
 			log('获取到的【' .. group .. '】订阅内容为空，可能是订阅地址无效，或是网络问题，请诊断！')
 		end
+		return {}
 	end
 end
 
@@ -2304,14 +2365,32 @@ local execute = function()
 					local stdout = f:read("*all")
 					f:close()
 					local raw_data = api.trim(stdout)
+					-- 1. 先从 HTTP Header 中提取标准订阅用量
+					if headers and headers ~= "" then
+						local header_info = parse_clash_sub_info(headers)
+						if header_info then
+							subscribe_info[cfgid] = header_info
+						end
+					end
+
+					-- 2. 解析原始节点并剥离过滤纯说明节点
+					raw_data = parseClashNode(raw_data)
+					local parsed_nodes = parse_link(raw_data, "2", remark, value)
+
+					-- 3. 基于纯物理节点有效连接属性计算指纹，免疫动态 Remarks 流量噪声
 					local old_md5 = value.md5 or ""
-					local new_md5 = api.md5_file(tmp_file)
+					local new_md5 = get_node_fingerprint(parsed_nodes)
+
 					if not manual_sub and new_md5 ~= "" and old_md5 == new_md5 then
-						log('订阅:【' .. remark .. '】没有变化，无需更新。')
+						log('订阅:【' .. remark .. '】节点物理配置无变化，无需更新。')
 					else
-						raw_data = parseClashNode(raw_data)
-						subscribe_info[cfgid] = parse_clash_sub_info(headers)
-						parse_link(raw_data, "2", remark, value)
+						if #parsed_nodes > 0 then
+							nodeResult[#nodeResult + 1] = {
+								remark = remark,
+								list = parsed_nodes,
+								sub_cfg = value
+							}
+						end
 						uci_set(cfgid, "md5", new_md5)
 					end
 				else
@@ -2322,6 +2401,18 @@ local execute = function()
 				end
 			end
 		end
+
+		-- 无论节点物理配置是否变动，始终将最新提取到的账户用量与周期静默落盘至 UCI
+		for c_id, info in pairs(subscribe_info) do
+			for key, val in pairs(info) do
+				if val and val ~= "" then
+					uci_set(c_id, key, val)
+				else
+					uci_del(c_id, key)
+				end
+			end
+		end
+		uci_save(true)
 
 		if #fail_list > 0 then
 			for index, value in ipairs(fail_list) do
