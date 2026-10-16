@@ -271,6 +271,19 @@ end
 -- 计算文件 MD5
 function md5_file(path)
 	if type(path) ~= "string" then return "" end
+	if nixio and nixio.crypto and nixio.crypto.hash and nixio.open then
+		local h = nixio.crypto.hash("md5")
+		local f = nixio.open(path, "r")
+		if f then
+			while true do
+				local chunk = f:read(4096)
+				if not chunk or #chunk == 0 then break end
+				h:update(chunk)
+			end
+			f:close()
+			return h:final()
+		end
+	end
 	local quoted = "'" .. path:gsub("'", "'\\''") .. "'"
 	local out = sys.exec("md5sum " .. quoted)
 	if not out then return "" end
@@ -280,6 +293,11 @@ end
 -- 计算字符串 MD5
 function md5_string(str)
 	if type(str) ~= "string" then return "" end
+	if nixio and nixio.crypto and nixio.crypto.hash then
+		local h = nixio.crypto.hash("md5")
+		h:update(str)
+		return h:final()
+	end
 	local quoted = "'" .. str:gsub("'", "'\\''") .. "'"
 	local out = sys.exec("printf '%s' " .. quoted .. " | md5sum")
 	if not out then return "" end
