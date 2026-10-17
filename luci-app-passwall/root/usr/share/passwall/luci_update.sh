@@ -5,6 +5,9 @@ status="$2"
 manager="$3"
 force="$4"
 
+rules_backup="/tmp/passwall_rules_backup_$$"
+[ -d "/etc/passwall/rules" ] && cp -a "/etc/passwall/rules" "$rules_backup"
+
 if [ "$manager" = apk ]; then
 	extra=""
 	[ "$force" = 1 ] && extra="--force-reinstall --force-overwrite"
@@ -17,11 +20,25 @@ else
 	result=$?
 fi
 
+if [ -d "$rules_backup" ]; then
+	mkdir -p "/etc/passwall/rules"
+	for bf in "$rules_backup"/*; do
+		[ -f "$bf" ] || continue
+		bname=$(basename "$bf")
+		if [ ! -f "/etc/passwall/rules/$bname" ] || ([ ! -s "/etc/passwall/rules/$bname" ] && [ -s "$bf" ]); then
+			cp -f "$bf" "/etc/passwall/rules/$bname"
+		elif [ -f "/usr/share/passwall/rules/$bname" ] && cmp -s "/etc/passwall/rules/$bname" "/usr/share/passwall/rules/$bname" && ! cmp -s "$bf" "/usr/share/passwall/rules/$bname"; then
+			cp -f "$bf" "/etc/passwall/rules/$bname"
+		fi
+	done
+	rm -rf "$rules_backup"
+fi
+
 rm -rf "$dir"
 if [ "$result" = 0 ]; then
 	rm -f "/tmp/etc/${CONFIG}_tmp/${CONFIG}_version" /tmp/luci-indexcache /tmp/luci-indexcache.*
 	if [ -x /etc/init.d/rpcd ]; then
-		/etc/init.d/rpcd restart >/dev/null 2>&1
+		/etc/init.d/rpcd reload >/dev/null 2>&1
 	fi
 	if [ -x /etc/init.d/uhttpd ]; then
 		/etc/init.d/uhttpd reload >/dev/null 2>&1
