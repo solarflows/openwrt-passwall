@@ -5,9 +5,6 @@ status="$2"
 manager="$3"
 force="$4"
 
-rules_backup="/tmp/passwall_rules_backup_$$"
-[ -d "/etc/passwall/rules" ] && cp -a "/etc/passwall/rules" "$rules_backup"
-
 if [ "$manager" = apk ]; then
 	extra=""
 	[ "$force" = 1 ] && extra="--force-reinstall --force-overwrite"
@@ -18,20 +15,6 @@ else
 	[ "$force" = 1 ] && extra="--force-reinstall"
 	opkg install $extra "$dir/luci-app-${CONFIG}.ipk" "$dir/luci-i18n-${CONFIG}-zh-cn.ipk"
 	result=$?
-fi
-
-if [ -d "$rules_backup" ]; then
-	mkdir -p "/etc/passwall/rules"
-	for bf in "$rules_backup"/*; do
-		[ -f "$bf" ] || continue
-		bname=$(basename "$bf")
-		if [ ! -f "/etc/passwall/rules/$bname" ] || ([ ! -s "/etc/passwall/rules/$bname" ] && [ -s "$bf" ]); then
-			cp -f "$bf" "/etc/passwall/rules/$bname"
-		elif [ -f "/usr/share/passwall/rules/$bname" ] && cmp -s "/etc/passwall/rules/$bname" "/usr/share/passwall/rules/$bname" && ! cmp -s "$bf" "/usr/share/passwall/rules/$bname"; then
-			cp -f "$bf" "/etc/passwall/rules/$bname"
-		fi
-	done
-	rm -rf "$rules_backup"
 fi
 
 rm -rf "$dir"

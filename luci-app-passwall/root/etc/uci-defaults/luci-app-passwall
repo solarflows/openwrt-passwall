@@ -43,7 +43,7 @@ for file in \
 	lanlist_ipv6 \
 	domains_excluded
 do
-	[ -e "/etc/passwall/rules/$file" ] || cp "/usr/share/passwall/rules/$file" "/etc/passwall/rules/$file"
+	[ -f "/etc/passwall/rules/$file" ] || cp "/usr/share/passwall/rules/$file" "/etc/passwall/rules/$file"
 done
 
 chmod +x /usr/share/passwall/*.sh
