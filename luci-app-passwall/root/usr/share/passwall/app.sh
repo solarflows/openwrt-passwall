@@ -1723,7 +1723,7 @@ acl_app() {
 start() {
 	busybox pgrep -f ${TMP_PATH}/bin > /dev/null 2>&1 && {
 		logger -t PSW-RESTART "Upgrade or overload residue is detected, and the subprocess is being called to perform complete cleaning..."
-		(stop)
+		(stop "$1")
 		sleep 2
 	}
 	mkdir -p /tmp/etc /tmp/log $TMP_PATH $TMP_BIN_PATH $TMP_SCRIPT_FUNC_PATH $TMP_ROUTE_PATH $TMP_ACL_PATH $TMP_PATH2
@@ -1775,7 +1775,7 @@ start() {
 		}
 	fi
 
-	start_crontab $1
+	start_crontab "$1"
 	echolog "运行完成！\n"
 
 	[ "$ENABLED" = 1 ] && [ "$1" = "boot" ] && {
@@ -1812,11 +1812,10 @@ stop() {
 	unset V2RAY_LOCATION_ASSET
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
-	stop_crontab $1
+	stop_crontab "$1"
 	[ -n "$GLOBAL_DNSMASQ_CONF" ] && rm -rf "$GLOBAL_DNSMASQ_CONF"
 	[ -n "$GLOBAL_DNSMASQ_CONF_PATH" ] && rm -rf "$GLOBAL_DNSMASQ_CONF_PATH"
 	del_smartdns_shared_conf
-
 	[ "1" = "1" ] && {
 		#restore logic
 		bak_dnsmasq_dns_redirect=$(config_n_get @global[0] dnsmasq_dns_redirect)
