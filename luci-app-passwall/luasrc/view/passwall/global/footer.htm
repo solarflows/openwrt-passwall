@@ -197,6 +197,19 @@ local sid = "@global[0]"
 	})();
 
 	(function () {
+		const addLogLink = (select) => {
+			if (select.parentElement.querySelector("a.dns-log-link")) {
+				return;
+			}
+			const logLink = document.createElement("a");
+			logLink.innerHTML = "<%:Log%>";
+			logLink.href = "#";
+			logLink.className = "dns-log-link";
+			logLink.style.marginLeft = "10px";
+			logLink.setAttribute("onclick", "window.open('" + '<%=api.url("get_chinadns_log")%>' + "?flag=default', '_blank')");
+			select.insertAdjacentElement("afterend", logLink);
+		};
+
 		const initDnsSelect = (dns_select) => {
 			if (dns_select.value === "chinadns-ng") {
 				addLogLink(dns_select);
@@ -231,20 +244,6 @@ local sid = "@global[0]"
 			observer.observe(document.body, { childList: true, subtree: true });
 			setTimeout(() => observer.disconnect(), 3000);
 		}
-	})();
-
-		const addLogLink = (select) => {
-			if (select.parentElement.querySelector("a.dns-log-link")) {
-				return;
-			}
-			const logLink = document.createElement("a");
-			logLink.innerHTML = "<%:Log%>";
-			logLink.href = "#";
-			logLink.className = "dns-log-link";
-			logLink.style.marginLeft = "10px";
-			logLink.setAttribute("onclick", "window.open('" + '<%=api.url("get_chinadns_log")%>' + "?flag=default', '_blank')");
-			select.insertAdjacentElement("afterend", logLink);
-		};
 	})();
 
 	(function () {
