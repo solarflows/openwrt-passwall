@@ -2386,7 +2386,7 @@ local execute = function()
 
 					-- 3. 基于纯物理节点有效连接属性计算指纹，免疫动态 Remarks 流量噪声
 					local old_md5 = value.md5 or ""
-					local new_md5 = get_node_fingerprint(parsed_nodes)
+					local new_md5 = #parsed_nodes > 0 and get_node_fingerprint(parsed_nodes) or ""
 
 					if not manual_sub and new_md5 ~= "" and old_md5 == new_md5 then
 						log(string.format("订阅:【%s】物理出站配置未发生变动，跳过节点重写与服务重启。", remark))
@@ -2406,8 +2406,8 @@ local execute = function()
 								list = parsed_nodes,
 								sub_cfg = value
 							}
+							uci_set(cfgid, "md5", new_md5)
 						end
-						uci_set(cfgid, "md5", new_md5)
 						if subscribe_info[cfgid] then
 							log(string.format("订阅:【%s】已同步更新账户用量与到期时间信息。", remark))
 						end
