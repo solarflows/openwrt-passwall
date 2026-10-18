@@ -2395,6 +2395,7 @@ local execute = function()
 							log(string.format("订阅:【%s】已同步更新账户用量与到期时间信息。", remark))
 						end
 					end
+				else
 					fail_list[#fail_list + 1] = value
 				end
 				if not url_is_local then
