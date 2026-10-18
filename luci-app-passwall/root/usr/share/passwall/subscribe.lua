@@ -2214,10 +2214,13 @@ local function get_node_fingerprint(node_list)
 end
 
 local function parse_link(raw, add_mode, group, sub_cfg)
+	-- 订阅模式下采用日志缓冲：因指纹计算需要前置解析节点，将解析日志暂存，
+	-- 仅在节点物理配置真正发生变动时输出，避免未变更时定时任务刷屏。
 	local parse_logs = {}
 	local function sub_log(...)
 		if add_mode == "2" then
-			tinsert(parse_logs, {...})
+			local n = select("#", ...)
+			tinsert(parse_logs, n == 1 and (...) or table.concat({...}, " "))
 		else
 			log(...)
 		end
@@ -2391,10 +2394,10 @@ local execute = function()
 							log(string.format("订阅:【%s】已同步刷新账户用量与到期时间信息。", remark))
 						end
 					else
+						-- 节点物理配置发生变动时，回放前置解析期间的节点统计与丢弃日志
 						if parse_logs then
-							local unpack = unpack or table.unpack
-							for _, args in ipairs(parse_logs) do
-								log(unpack(args))
+							for _, msg in ipairs(parse_logs) do
+								log(msg)
 							end
 						end
 						if #parsed_nodes > 0 then
