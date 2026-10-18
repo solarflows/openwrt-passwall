@@ -2238,9 +2238,11 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 							log('丢弃节点：' .. result.remarks .. " ，原因：" .. result.error_msg)
 						elseif not result.type then
 							log('丢弃节点：' .. result.remarks .. " ，找不到可使用二进制。")
-						elseif (add_mode == "2" and (is_filter_keyword(keyword_filter, result.remarks) or is_invalid_node(result))) or not result.address or result.remarks == "NULL" or
+						elseif add_mode == "2" and is_filter_keyword(keyword_filter, result.remarks) then
+							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：匹配到关键字过滤规则")
+						elseif (add_mode == "2" and is_invalid_node(result)) or not result.address or result.remarks == "NULL" or
 								(not datatypes.hostname(result.address) and not (api.is_ip(result.address))) then
-							log('丢弃过滤节点：' .. (result.type or '未知') .. ' 节点，' .. result.remarks)
+							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：无效物理网络地址或端口 (回环/全零/非法端口/非法地址)")
 						else
 							tinsert(node_list, result)
 						end
@@ -2338,7 +2340,10 @@ local execute = function()
 					local new_md5 = get_node_fingerprint(parsed_nodes)
 
 					if not manual_sub and new_md5 ~= "" and old_md5 == new_md5 then
-						log("订阅:【" .. remark .. "】节点物理配置无变化，无需更新。")
+						log(string.format("订阅:【%s】物理出站配置未发生变动，跳过节点重写与服务重启。", remark))
+						if subscribe_info[cfgid] then
+							log(string.format("订阅:【%s】已同步刷新账户用量与到期时间信息。", remark))
+						end
 					else
 						if #parsed_nodes > 0 then
 							nodeResult[#nodeResult + 1] = {
@@ -2348,8 +2353,10 @@ local execute = function()
 							}
 						end
 						uci_set(cfgid, "md5", new_md5)
+						if subscribe_info[cfgid] then
+							log(string.format("订阅:【%s】已同步更新账户用量与到期时间信息。", remark))
+						end
 					end
-				else
 					fail_list[#fail_list + 1] = value
 				end
 				if not url_is_local then
