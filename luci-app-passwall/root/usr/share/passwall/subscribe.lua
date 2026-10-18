@@ -2214,6 +2214,14 @@ local function get_node_fingerprint(node_list)
 end
 
 local function parse_link(raw, add_mode, group, sub_cfg)
+	local parse_logs = {}
+	local function sub_log(...)
+		if add_mode == "2" then
+			tinsert(parse_logs, {...})
+		else
+			log(...)
+		end
+	end
 	if raw and #raw > 0 then
 		local cfgid
 		if sub_cfg then
@@ -2268,19 +2276,19 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 							end
 						end
 					else
-						log('跳过未知类型：' .. szType)
+						sub_log('跳过未知类型：' .. szType)
 					end
 					-- log(result)
 					if result then
 						if result.error_msg then
-							log('丢弃节点：' .. result.remarks .. " ，原因：" .. result.error_msg)
+							sub_log('丢弃节点：' .. result.remarks .. " ，原因：" .. result.error_msg)
 						elseif not result.type then
-							log('丢弃节点：' .. result.remarks .. " ，找不到可使用二进制。")
+							sub_log('丢弃节点：' .. result.remarks .. " ，找不到可使用二进制。")
 						elseif add_mode == "2" and is_filter_keyword(keyword_filter, result.remarks) then
-							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：匹配到关键字过滤规则")
+							sub_log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：匹配到关键字过滤规则")
 						elseif (add_mode == "2" and is_invalid_node(result)) or not result.address or result.remarks == "NULL" or
 								(not datatypes.hostname(result.address) and not (api.is_ip(result.address))) then
-							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：无效物理网络地址或端口 (回环/全零/非法端口/非法地址)")
+							sub_log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：无效物理网络地址或端口 (回环/全零/非法端口/非法地址)")
 						else
 							tinsert(node_list, result)
 						end
@@ -2304,13 +2312,13 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 				}
 			end
 		end
-		log('成功解析【' .. group .. '】节点数量：' .. #node_list)
-		return node_list
+		sub_log('成功解析【' .. group .. '】节点数量：' .. #node_list)
+		return node_list, parse_logs
 	else
 		if add_mode == "2" then
-			log('获取到的【' .. group .. '】订阅内容为空，可能是订阅地址无效，或是网络问题，请诊断！')
+			sub_log('获取到的【' .. group .. '】订阅内容为空，可能是订阅地址无效，或是网络问题，请诊断！')
 		end
-		return {}
+		return {}, parse_logs
 	end
 end
 
@@ -2371,7 +2379,7 @@ local execute = function()
 
 					-- 2. 解析原始节点并剥离过滤纯说明节点
 					raw_data = parseClashNode(raw_data)
-					local parsed_nodes = parse_link(raw_data, "2", remark, value)
+					local parsed_nodes, parse_logs = parse_link(raw_data, "2", remark, value)
 
 					-- 3. 基于纯物理节点有效连接属性计算指纹，免疫动态 Remarks 流量噪声
 					local old_md5 = value.md5 or ""
@@ -2383,6 +2391,12 @@ local execute = function()
 							log(string.format("订阅:【%s】已同步刷新账户用量与到期时间信息。", remark))
 						end
 					else
+						if parse_logs then
+							local unpack = unpack or table.unpack
+							for _, args in ipairs(parse_logs) do
+								log(unpack(args))
+							end
+						end
 						if #parsed_nodes > 0 then
 							nodeResult[#nodeResult + 1] = {
 								remark = remark,
