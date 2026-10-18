@@ -11,7 +11,7 @@ echolog() {
 	local c="$*"
 	echo -e "$d: $c" >>$LOG_FILE
 	[ -n "$LOG_EVENT_CMD" ] && [ -n "$LOG_EVENT_FILTER" ] && echo -n "$c" | grep -Eq "$LOG_EVENT_FILTER" 2>/dev/null && {
-		sh -c "$(echo -n "$LOG_EVENT_CMD" | sed "s/%s/$c/g")" >/dev/null 2>&1 &
+		sh -c "$(echo -n "$LOG_EVENT_CMD" | sed "s/%s/$c/g")" >/dev/null 2>&1 9>&- &
 	}
 }
 check_process() {
