@@ -2159,3 +2159,16 @@ msgstr "实时穿透 (-no-cache，已被分流引擎锁死)"
 
 msgid "In shunt mode, proxy domains are locked to real-time direct query (-no-cache) to ensure URLTest latency probing and failover take effect immediately without stale cache."
 msgstr "在分流模式下，代理域名已被引擎锁定为实时穿透 (-no-cache)，确保 URLTest 延迟探测与故障转移瞬间生效，彻底杜绝陈旧脏缓存。"
+
+msgid "Custom Proxy Target Set"
+msgstr "优先自定义代理目标集合 (psw_custom)"
+
+msgid "Enable a pre-ACL dedicated proxy destination set (psw_custom). Traffic to IPs in this set from any LAN client (including unproxied or direct devices) is immediately redirected to the main proxy node, completely bypassing ACL filtering."
+msgstr "启用前置于 ACL 判定的专用代理目标集合 (psw_custom)。局域网任意设备（包括未分配代理或配置为全局直连的设备）访问该集合内的目标 IP 时，直接在 ACL 判定前被劫持至主节点代理端口出站，彻底跳过 ACL 过滤。"
+
+msgid "Target Set Names & Syntax"
+msgstr "目标集合命名规范与引用语法"
+
+msgid "SmartDNS Config Example"
+msgstr "SmartDNS 配置示例"
+

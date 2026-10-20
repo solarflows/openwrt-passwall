@@ -61,6 +61,7 @@ config global_singbox
 config global_optimize
 	option fork_optimize '1'
 	option nft_optimize '1'
+	option custom_proxy '0'
 
 config global_other
 	option auto_detection_time 'tcping'

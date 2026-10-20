@@ -13,6 +13,7 @@ IPSET_CHN="psw_chn"
 IPSET_BLACK="psw_black"
 IPSET_WHITE="psw_white"
 IPSET_BLOCK="psw_block"
+IPSET_CUSTOM="psw_custom"
 
 IPSET_LOCAL6="psw_local6"
 IPSET_WAN6="psw_wan6"
@@ -24,6 +25,7 @@ IPSET_CHN6="psw_chn6"
 IPSET_BLACK6="psw_black6"
 IPSET_WHITE6="psw_white6"
 IPSET_BLOCK6="psw_block6"
+IPSET_CUSTOM6="psw_custom6"
 
 # ASCII code for PSW1.Use whatever,just not the same.
 FWMARK="0x50535731"
@@ -45,6 +47,8 @@ FAKE_IP_6="2001:2::/48"
 
 USE_GEOVIEW=0
 EXCLUDE_VPSIP="^(0\.0\.0\.0|127\.0\.0\.1|1\.1\.1\.1|1\.1\.1\.2|8\.8\.8\.8|8\.8\.4\.4|9\.9\.9\.9)$"
+[ -z "$(command -v config_n_get)" ] && . "$UTILS_PATH"
+CUSTOM_PROXY=$(config_n_get @global_optimize[0] custom_proxy $(config_n_get @global[0] custom_proxy 0))
 
 factor() {
 	if [ -z "$1" ] || [ -z "$2" ]; then
@@ -896,6 +900,7 @@ add_firewall_rule() {
 	ipset -! create $IPSET_BLACK nethash maxelem 1048576 timeout 172800
 	ipset -! create $IPSET_WHITE nethash maxelem 1048576 timeout 172800
 	ipset -! create $IPSET_BLOCK nethash maxelem 1048576 timeout 172800
+	[ "$CUSTOM_PROXY" = "1" ] && ipset -! create $IPSET_CUSTOM nethash maxelem 1048576 timeout 172800
 
 	ipset -! create $IPSET_LOCAL6 nethash family inet6 maxelem 1048576
 	ipset -! create $IPSET_WAN6 nethash family inet6 maxelem 1048576
@@ -907,6 +912,7 @@ add_firewall_rule() {
 	ipset -! create $IPSET_BLACK6 nethash family inet6 maxelem 1048576 timeout 172800
 	ipset -! create $IPSET_WHITE6 nethash family inet6 maxelem 1048576 timeout 172800
 	ipset -! create $IPSET_BLOCK6 nethash family inet6 maxelem 1048576 timeout 172800
+	[ "$CUSTOM_PROXY" = "1" ] && ipset -! create $IPSET_CUSTOM6 nethash family inet6 maxelem 1048576 timeout 172800
 
 	cat $RULES_PATH/chnroute | tr -s '\n' | grep -v "^#" | sed -e "/^$/d" | sed -e "s/^/add $IPSET_CHN &/g" -e "s/$/ timeout 0/g" | ipset -! -R
 	cat $RULES_PATH/chnroute6 | tr -s '\n' | grep -v "^#" | sed -e "/^$/d" | sed -e "s/^/add $IPSET_CHN6 &/g" -e "s/$/ timeout 0/g" | ipset -! -R
@@ -1413,6 +1419,26 @@ add_firewall_rule() {
 		insert_rule_before "$ip6t_m" "OUTPUT" "mwan3" "$(comment mangle-OUTPUT-PSW) -m mark --mark ${FWMARK} -j RETURN"
 	}
 
+	# 优先代理目标集合 (Pre-ACL Priority Proxy)
+	[ "$CUSTOM_PROXY" = "1" ] && [ -n "$NODE" ] && {
+		if [ -n "${is_tproxy}" ]; then
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p tcp $(dst $IPSET_CUSTOM) -j PSW_RULE
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p tcp $(dst $IPSET_CUSTOM) $(REDIRECT $REDIR_PORT TPROXY)
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM) -j PSW_RULE
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM) $(REDIRECT $REDIR_PORT TPROXY)
+		else
+			$ipt_n -A PSW $(comment "CUSTOM_PROXY") -p tcp $(dst $IPSET_CUSTOM) $(REDIRECT $REDIR_PORT)
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM) -j PSW_RULE
+			$ipt_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM) $(REDIRECT $REDIR_PORT TPROXY)
+		fi
+		[ "$PROXY_IPV6" = "1" ] && {
+			$ip6t_m -A PSW $(comment "CUSTOM_PROXY") -p tcp $(dst $IPSET_CUSTOM6) -j PSW_RULE
+			$ip6t_m -A PSW $(comment "CUSTOM_PROXY") -p tcp $(dst $IPSET_CUSTOM6) $(REDIRECT $REDIR_PORT TPROXY)
+			$ip6t_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM6) -j PSW_RULE
+			$ip6t_m -A PSW $(comment "CUSTOM_PROXY") -p udp $(dst $IPSET_CUSTOM6) $(REDIRECT $REDIR_PORT TPROXY)
+		}
+	}
+
 	#  加载ACLS
 	load_acl
 
@@ -1468,6 +1494,8 @@ del_firewall_rule() {
 	destroy_ipset $IPSET_WAN
 	destroy_ipset $IPSET_LAN
 	destroy_ipset $IPSET_VPS
+	destroy_ipset $IPSET_CUSTOM
+	destroy_ipset $IPSET_CUSTOM6
 	#destroy_ipset $IPSET_SHUNT
 	#destroy_ipset $IPSET_GFW
 	#destroy_ipset $IPSET_CHN

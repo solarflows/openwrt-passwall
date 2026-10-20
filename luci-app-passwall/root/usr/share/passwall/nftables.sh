@@ -14,6 +14,7 @@ NFTSET_CHN="psw_chn"
 NFTSET_BLACK="psw_black"
 NFTSET_WHITE="psw_white"
 NFTSET_BLOCK="psw_block"
+NFTSET_CUSTOM="psw_custom"
 
 NFTSET_LOCAL6="psw_local6"
 NFTSET_WAN6="psw_wan6"
@@ -25,6 +26,7 @@ NFTSET_CHN6="psw_chn6"
 NFTSET_BLACK6="psw_black6"
 NFTSET_WHITE6="psw_white6"
 NFTSET_BLOCK6="psw_block6"
+NFTSET_CUSTOM6="psw_custom6"
 
 # IPv4 static sets
 #Keep the variable names consistent with those in `nft_rule_dual`\rule_update.lua
@@ -54,6 +56,7 @@ EXCLUDE_VPSIP="^(0\.0\.0\.0|127\.0\.0\.1|1\.1\.1\.1|1\.1\.1\.2|8\.8\.8\.8|8\.8\.
 [ -z "$(command -v config_n_get)" ] && . "$UTILS_PATH"
 FORK_OPTIMIZE=$(config_n_get @global_optimize[0] fork_optimize $(config_n_get @global_forwarding[0] fork_optimize 1))
 NFT_OPTIMIZE=$(config_n_get @global_optimize[0] nft_optimize $(config_n_get @global_forwarding[0] nft_optimize 1))
+CUSTOM_PROXY=$(config_n_get @global_optimize[0] custom_proxy $(config_n_get @global[0] custom_proxy 0))
 
 factor() {
 	local ports="$1"
@@ -1098,6 +1101,7 @@ add_firewall_rule() {
 	gen_nftset $NFTSET_BLOCK_STATIC ipv4_addr 0
 	gen_nftset $NFTSET_SHUNT ipv4_addr "2d"
 	gen_nftset $NFTSET_SHUNT_STATIC ipv4_addr 0
+	[ "$CUSTOM_PROXY" = "1" ] && gen_nftset $NFTSET_CUSTOM ipv4_addr "2d"
 
 	gen_nftset $NFTSET_WAN6 ipv6_addr 0 
 	gen_nftset $NFTSET_VPS6 ipv6_addr 0
@@ -1121,6 +1125,7 @@ add_firewall_rule() {
 	gen_nftset $NFTSET_BLOCK6_STATIC ipv6_addr 0
 	gen_nftset $NFTSET_SHUNT6 ipv6_addr "2d"
 	gen_nftset $NFTSET_SHUNT6_STATIC ipv6_addr 0
+	[ "$CUSTOM_PROXY" = "1" ] && gen_nftset $NFTSET_CUSTOM6 ipv6_addr "2d"
 
 	#导入规则列表、分流规则中的IP列表
 	local USE_PROXY_LIST_ALL=${USE_PROXY_LIST}
@@ -1630,6 +1635,20 @@ add_firewall_rule() {
 		nft "add rule $NFTABLE_NAME mangle_output meta mark ${FWMARK} counter return comment \"PSW_OUTPUT_MANGLE\""
 	}
 
+	# 优先代理目标集合 (Pre-ACL Priority Proxy)
+	[ "$CUSTOM_PROXY" = "1" ] && [ -n "$NODE" ] && {
+		if [ -n "${is_tproxy}" ]; then
+			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol { tcp, udp } ip daddr @$NFTSET_CUSTOM counter jump PSW_RULE comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol { tcp, udp } ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT TPROXY4) comment \"CUSTOM_PROXY\""
+		else
+			nft "add rule $NFTABLE_NAME PSW_NAT ip protocol tcp ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT) comment \"CUSTOM_PROXY\""
+		fi
+		[ "$PROXY_IPV6" = "1" ] && {
+			nft "add rule $NFTABLE_NAME PSW_MANGLE_V6 meta l4proto { tcp, udp } ip6 daddr @$NFTSET_CUSTOM6 counter jump PSW_RULE comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE_V6 meta l4proto { tcp, udp } ip6 daddr @$NFTSET_CUSTOM6 $(REDIRECT $REDIR_PORT TPROXY6) comment \"CUSTOM_PROXY\""
+		}
+	}
+
 	#  加载ACLS
 	load_acl
 
@@ -1682,6 +1701,7 @@ del_firewall_rule() {
 	destroy_nftset $NFTSET_WAN
 	destroy_nftset $NFTSET_LAN
 	destroy_nftset $NFTSET_VPS
+	destroy_nftset $NFTSET_CUSTOM $NFTSET_CUSTOM6
 	#destroy_nftset $NFTSET_SHUNT
 	destroy_nftset $NFTSET_SHUNT_STATIC
 	#destroy_nftset $NFTSET_GFW

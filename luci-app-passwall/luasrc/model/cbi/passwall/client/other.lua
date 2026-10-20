@@ -276,4 +276,29 @@ o = s_opt:option(Flag, "nft_optimize", translate("NFTables Rules Optimization"),
 	translate("Optimize nftables rule order and rp_filter for performance."))
 o.default = 1
 o.rmempty = false
+
+---- Custom Proxy Set (Pre-ACL Priority Target Set)
+o = s_opt:option(Flag, "custom_proxy", translate("Custom Proxy Target Set"),
+	translate("Enable a pre-ACL dedicated proxy destination set (psw_custom). Traffic to IPs in this set from any LAN client (including unproxied or direct devices) is immediately redirected to the main proxy node, completely bypassing ACL filtering."))
+o.default = 0
+o.rmempty = false
+
+o = s_opt:option(DummyValue, "_custom_proxy_info", translate("Target Set Names & Syntax"))
+o.rawhtml = true
+o:depends("custom_proxy", "1")
+o.cfgvalue = function(t, n)
+	return string.format([[
+		<div style="background-color: var(--cbi-input-background, #f7f9fa); border: 1px solid var(--cbi-input-border, #e0e0e0); border-radius: 4px; padding: 10px 14px; font-family: monospace; font-size: 13px; line-height: 1.6;">
+			<div><strong>• Nftables (IPv4):</strong> <span style="color: #0288d1;">inet#passwall#psw_custom</span></div>
+			<div><strong>• Nftables (IPv6):</strong> <span style="color: #0288d1;">inet#passwall#psw_custom6</span></div>
+			<div><strong>• Iptables (ipset):</strong> <span style="color: #0288d1;">psw_custom / psw_custom6</span></div>
+			<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #ccc; color: #555;">
+				<strong>%s:</strong><br />
+				<code>domain-rules /steamcommunity.com/ -nftset inet#passwall#psw_custom</code><br />
+				<code>domain-rules /steampowered.com/ -nftset inet#passwall#psw_custom</code>
+			</div>
+		</div>
+	]], translate("SmartDNS Config Example"))
+end
+
 	return api.return_map(m)
