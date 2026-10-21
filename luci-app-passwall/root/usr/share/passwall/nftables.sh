@@ -1639,13 +1639,15 @@ add_firewall_rule() {
 	[ "$CUSTOM_PROXY" = "1" ] && [ -n "$NODE" ] && {
 		if [ -n "${is_tproxy}" ]; then
 			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol { tcp, udp } ip daddr @$NFTSET_CUSTOM counter jump PSW_RULE comment \"CUSTOM_PROXY\""
-			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol { tcp, udp } ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT TPROXY4) comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol { tcp, udp } ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT TPROXY4) accept comment \"CUSTOM_PROXY\""
 		else
 			nft "add rule $NFTABLE_NAME PSW_NAT ip protocol tcp ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT) comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol udp ip daddr @$NFTSET_CUSTOM counter jump PSW_RULE comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE ip protocol udp ip daddr @$NFTSET_CUSTOM $(REDIRECT $REDIR_PORT TPROXY4) accept comment \"CUSTOM_PROXY\""
 		fi
 		[ "$PROXY_IPV6" = "1" ] && {
 			nft "add rule $NFTABLE_NAME PSW_MANGLE_V6 meta l4proto { tcp, udp } ip6 daddr @$NFTSET_CUSTOM6 counter jump PSW_RULE comment \"CUSTOM_PROXY\""
-			nft "add rule $NFTABLE_NAME PSW_MANGLE_V6 meta l4proto { tcp, udp } ip6 daddr @$NFTSET_CUSTOM6 $(REDIRECT $REDIR_PORT TPROXY6) comment \"CUSTOM_PROXY\""
+			nft "add rule $NFTABLE_NAME PSW_MANGLE_V6 meta l4proto { tcp, udp } ip6 daddr @$NFTSET_CUSTOM6 $(REDIRECT $REDIR_PORT TPROXY6) accept comment \"CUSTOM_PROXY\""
 		}
 	}
 
