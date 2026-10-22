@@ -2175,3 +2175,10 @@ msgstr "目标集合命名规范与引用语法"
 msgid "SmartDNS Config Example"
 msgstr "SmartDNS 配置示例"
 
+msgid "Lifecycle & Best Practice"
+msgstr "生命周期与最佳实践"
+
+msgid "The set lifecycle strictly follows PassWall (automatically recreated on service start/reload to ensure zero orphan rules). Recommended to pair with SmartDNS short TTL (30-60s) or -no-cache so client apps quickly re-query and re-inject IPs without prolonged stale-cache issues."
+msgstr "该集合生命周期严格受控于 PassWall 服务（随服务启动创建、停止/重载时自动回收，杜绝悬挂孤儿集合）。强烈建议配合 SmartDNS 的极短 TTL（如 30-60s）或穿透模式 (-no-cache) 搭配使用，确保服务重载后客户端遇阻能瞬间重新触发解析并自动回填集合。"
+
+

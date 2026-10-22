@@ -297,8 +297,13 @@ o.cfgvalue = function(t, n)
 				<code>domain-rules /steamcommunity.com/ -nftset #4:inet#passwall#psw_custom</code><br />
 				<code>domain-rules /steampowered.com/ -nftset #4:inet#passwall#psw_custom,#6:inet#passwall#psw_custom6</code>
 			</div>
+			<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #ccc; font-size: 12px; color: #666; font-family: sans-serif;">
+				<strong>%s:</strong> %s
+			</div>
 		</div>
-	]], translate("SmartDNS Config Example"))
+	]], translate("SmartDNS Config Example"),
+	translate("Lifecycle & Best Practice"),
+	translate("The set lifecycle strictly follows PassWall (automatically recreated on service start/reload to ensure zero orphan rules). Recommended to pair with SmartDNS short TTL (30-60s) or -no-cache so client apps quickly re-query and re-inject IPs without prolonged stale-cache issues."))
 end
 
 	return api.return_map(m)
