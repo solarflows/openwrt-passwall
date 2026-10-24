@@ -105,10 +105,10 @@ jobs:
           * **SmartDNS 双模式架构**：
             * **系统共享/单进程优化 (`smartdns-shared`)**：复用宿主系统 SmartDNS 单进程，共享国内 warm 缓存池，`:15355` 直连承载跳过 dnsmasq 中间层；`:15354@lo` 独占纯净 Anycast DoH（阿里+字节）专属节点直连组（`passwall_vps`），控制面与数据面物理隔离。
             * **独立守护进程 (`smartdns`)**：100% 保持官方上游独立子进程原生逻辑（0 diff、0 hook），内置独立 WebUI 与日志。
-          * **订阅与节点处理**：订阅写入改用 `libuci-lua` 库直写；节点过滤增加去重缓存；节点下拉菜单数据池化以减小页面体积。
+          * **特权优先自定义代理集合 (`custom_proxy`)**：在 ACL 判定前置位插入针对 `psw_custom` 集合的直通引流，局域网直连设备无感代理特定服务。
+          * **订阅与节点处理**：基于物理连接拓扑提取纯净哈希指纹，解耦动态流量/到期备注，脏检查零 Flash 磨损与 0 断网刷新。
+          * **分流模式缓存双锁死**：前端锁死隐藏缓存模式，后端强制注入 `-no-cache` 与 `-no-serve-expired`，保障 URLTest 动态测速瞬间生效。
           * **防火墙与转发**：出站链增加 `PSW_FAST_RETURN` 短路规则，调整 `rp_filter` 参数以减少出站开销。
-          * **SmartDNS 选项**：增加规则组沙盒模式（`group-begin/match`），支持针对代理域名设置缓存 TTL（默认/300s/60s/关闭）。
-          * **守护进程隔离**：定时任务和重启逻辑增加会话脱钩（`setsid`），避免进程连带退出。
 
           ---
 
@@ -159,7 +159,14 @@ jobs:
 
           ### 💡 依赖说明
           PassWall 运行所需内核组件（如 Sing-Box、Xray、ChinaDNS-NG 等），可参考 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 软件源或从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 获取预编译包。
+
+          ---
+
+          ### 🚀 配套固件与工具 / Firmwares & Tools
+          * **[OpenWrtAction](https://github.com/smallprogram/OpenWrtAction)** —— 集成 PassWall 的 CI 固件，支持 x86、R2S、R4S、R5S、H68K 等，支持 GitHub 一键在线更新固件。
+          * **[Are-u-ok](https://github.com/bcseputetto/Are-u-ok)** —— iStoreOS .run 更新包，上传执行即可直接安装/升级。
           EOF
+          touch release.txt
 
       - name: Generate new tag & release
         if: steps.check_version.outputs.has_update == 'true'
@@ -255,3 +262,18 @@ jobs:
         with:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
           files: ${{ github.workspace }}/upload/*
+
+  job_trigger_packages:
+    name: Trigger packages cache workflow
+    needs: [job_check, job_build_passwall]
+    if: needs.job_check.outputs.has_update == 'true' && needs.job_build_passwall.result == 'success' && github.repository == 'Openwrt-Passwall/openwrt-passwall'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Trigger Auto Cache Software Release JSONs
+        env:
+          # PAT with "Actions: write" permission on the packages repository
+          GH_TOKEN: ${{ secrets.PACKAGES_DISPATCH_TOKEN }}
+        run: |
+          gh workflow run "Auto cache software release jsons.yml" \
+            --repo "${{ env.packages }}" \
+            --ref main
