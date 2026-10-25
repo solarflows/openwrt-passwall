@@ -1504,8 +1504,21 @@ function gen_config(var)
 				local bin = api.finded_com("geoview")
 				if bin then
 					local geo_file = (api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"):match("^(.*)/") .. "/geosite.dat"
+					local gfw_rule
 					if check_geosite_gfw(bin, geo_file) then
-						domain_list = (domain_list == "") and "geosite:gfw" or domain_list .. "\ngeosite:gfw"
+						gfw_rule = "geosite:gfw"
+					elseif api.compare_versions(api.get_app_version("geoview"), ">=", "0.2.8") then
+						local output = api.CACHE_PATH .. "/geodata/gfwlist.dat"
+						if not fs.access(output) then
+							fs.mkdirr(api.CACHE_PATH .. "/geodata")
+							local cmd = string.format("%s -type geosite -action convert -input /usr/share/passwall/rules/gfwlist -list '*' -output %s -format geosite",
+								api.util.shellquote(bin), api.util.shellquote(output))
+							if api.exec_call(cmd) ~= 0 then fs.unlink(output) end
+						end
+						gfw_rule = fs.access(output) and "ext:gfwlist.dat:all" or nil
+					end
+					if gfw_rule then
+						domain_list = (domain_list == "") and gfw_rule or domain_list .. "\n" .. gfw_rule
 					end
 				end
 
@@ -1564,7 +1577,7 @@ function gen_config(var)
 							w = api.trim(w)
 							if w == "" or w:find("#") == 1 then return end
 							if w:find("rule-set:", 1, true) == 1 or w:find("rs:") == 1 then return end
-							if w:find("ext:", 1, true) == 1 then return end  -- Rule currently not support ext:
+							if w:find("ext:", 1, true) == 1 and not (e[".name"] == "GFW_Mode_List" and w == "ext:gfwlist.dat:all") then return end
 							table.insert(domains, w)
 							table.insert(domain_table.domain, w)
 						end)
@@ -2076,10 +2089,7 @@ function gen_config(var)
 
 	if inbounds or outbounds then
 		local config = {
-			env = (function()
-				local asset_location = api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"
-				return { XRAY_LOCATION_ASSET = asset_location }
-			end)(),
+			env = { XRAY_LOCATION_ASSET = api.CACHE_PATH .. "/geodata" },
 			log = {
 				-- error = string.format("/tmp/etc/passwall/%s.log", node[".name"]),
 				loglevel = get_log_level(loglevel)
