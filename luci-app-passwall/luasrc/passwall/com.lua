@@ -19,11 +19,13 @@ _M.order = {
 	"hysteria"
 }
 
--- PassWall uses the same cached GitHub Release API, but is not listed as a
--- downloadable component because its LuCI package update flow is handled separately.
+-- PassWall uses our downstream repository's GitHub Release API for self-update.
 _M.passwall = {
 	name = "PassWall",
-	get_url = gh_release_url
+	repo = "solarflows/openwrt-passwall",
+	get_url = function(self)
+		return "https://api.github.com/repos/" .. self.repo .. "/releases?per_page=5"
+	end
 }
 
 _M.hysteria = {

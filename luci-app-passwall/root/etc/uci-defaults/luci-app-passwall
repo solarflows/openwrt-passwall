@@ -101,6 +101,8 @@ for sid in $(uci show passwall | grep "=acl_rule" | cut -d '.' -sf 2 | cut -d '=
 	uci -q delete "passwall.${sid}.udp_node"
 done
 
+uci -q get passwall.@global_optimize[0] >/dev/null || uci -q add passwall global_optimize >/dev/null
+
 uci -q commit passwall
 
 sed -i "s#add_from#group#g" /etc/config/passwall 2>/dev/null

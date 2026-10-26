@@ -1,0 +1,7 @@
+# Ignore raw diagnostic dumps, packet captures, and logs containing sensitive node credentials
+raw/
+*.log
+*.tgz
+*.tar.gz
+*.pcap
+proxies.json
