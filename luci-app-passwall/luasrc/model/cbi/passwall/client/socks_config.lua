@@ -76,6 +76,14 @@ o = s:option(Flag, "log", translate("Enable") .. " " .. translate("Log"))
 o.default = 1
 o.rmempty = false
 
+o = s:option(ListValue, "loglevel", translate("Log Level"))
+o.default = api.uci_get_c("@global[0]", "loglevel") or "warn"
+o:value("debug", "Debug")
+o:value("info", "Info")
+o:value("warn", "Warning")
+o:value("error", "Error")
+o:depends("log", true)
+
 o = s:option(DummyValue, "_log", translate("Log File"))
 o.rawhtml = true
 o.cfgvalue = function(t, n)
