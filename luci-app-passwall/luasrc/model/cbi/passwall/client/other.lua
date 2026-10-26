@@ -258,4 +258,52 @@ if has_singbox then
 	o.default = 0
 end
 
-return api.return_map(m)
+-- [[ Optimization & SmartDNS Settings ]]--
+if not m.uci:get(m.config, "@global_optimize[0]") then
+	m.uci:section(m.config, "global_optimize")
+	m.uci:commit(m.config)
+end
+s_opt = m:section(NamedSection, "@global_optimize[0]", "global_optimize", translate("Optimization & SmartDNS Settings"))
+
+---- Fork Performance Toolkit Toggle
+o = s_opt:option(Flag, "fork_optimize", translate("Fork Performance Toolkit"),
+	translate("Enable Fork-optimized scripts: nftables fast-return rules, millisecond-level incremental node filtering, native C-based ultra-fast subscription processing, and network tuning."))
+o.default = 1
+o.rmempty = false
+
+---- NFTables Optimization Toggle
+o = s_opt:option(Flag, "nft_optimize", translate("NFTables Rules Optimization"),
+	translate("Optimize nftables rule order and rp_filter for performance."))
+o.default = 1
+o.rmempty = false
+
+---- Custom Proxy Set (Pre-ACL Priority Target Set)
+o = s_opt:option(Flag, "custom_proxy", translate("Custom Proxy Target Set"),
+	translate("Enable a pre-ACL dedicated proxy destination set (psw_custom). Traffic to IPs in this set from any LAN client (including unproxied or direct devices) is immediately redirected to the main proxy node, completely bypassing ACL filtering."))
+o.default = 0
+o.rmempty = false
+
+o = s_opt:option(DummyValue, "_custom_proxy_info", translate("Target Set Names & Syntax"))
+o.rawhtml = true
+o:depends("custom_proxy", "1")
+o.cfgvalue = function(t, n)
+	return string.format([[
+		<div style="background-color: var(--cbi-input-background, #f7f9fa); border: 1px solid var(--cbi-input-border, #e0e0e0); border-radius: 4px; padding: 10px 14px; font-family: monospace; font-size: 13px; line-height: 1.6;">
+			<div><strong>• Nftables (IPv4):</strong> <span style="color: #0288d1;">#4:inet#passwall#psw_custom</span></div>
+			<div><strong>• Nftables (IPv6):</strong> <span style="color: #0288d1;">#6:inet#passwall#psw_custom6</span></div>
+			<div><strong>• Iptables (ipset):</strong> <span style="color: #0288d1;">psw_custom / psw_custom6</span></div>
+			<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #ccc; color: #555;">
+				<strong>%s:</strong><br />
+				<code>domain-rules /steamcommunity.com/ -nftset #4:inet#passwall#psw_custom</code><br />
+				<code>domain-rules /steampowered.com/ -nftset #4:inet#passwall#psw_custom,#6:inet#passwall#psw_custom6</code>
+			</div>
+			<div style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #ccc; font-size: 12px; color: #666; font-family: sans-serif;">
+				<strong>%s:</strong> %s
+			</div>
+		</div>
+	]], translate("SmartDNS Config Example"),
+	translate("Lifecycle & Best Practice"),
+	translate("The set lifecycle strictly follows PassWall (automatically recreated on service start/reload to ensure zero orphan rules). Recommended to pair with SmartDNS short TTL (30-60s) or -no-cache so client apps quickly re-query and re-inject IPs without prolonged stale-cache issues."))
+end
+
+	return api.return_map(m)
