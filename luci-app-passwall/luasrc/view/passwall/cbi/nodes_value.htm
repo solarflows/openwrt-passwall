@@ -67,16 +67,18 @@ local group_refs = {}
 local new_groups = {}
 for i, g in ipairs(group_order) do
 	-- 组名、节点 key/label 及顺序完全相同才复用，不与 ListValue 缓存混用
-	local signature = {g}
-	for _, item in ipairs(groups[g]) do
-		signature[#signature + 1] = {item.key, item.label}
+	local g_items = groups[g]
+	local sig_parts = { g, tostring(#g_items) }
+	for _, item in ipairs(g_items) do
+		sig_parts[#sig_parts + 1] = item.key
+		sig_parts[#sig_parts + 1] = item.label
 	end
-	local cache_key = json.stringify(signature)
+	local cache_key = table.concat(sig_parts, "\0")
 	local ref = group_cache[cache_key]
 	if not ref then
 		ref = cbid .. ".v-group." .. i
 		group_cache[cache_key] = ref
-		new_groups[ref] = groups[g]
+		new_groups[ref] = g_items
 	end
 	group_refs[i] = ref
 end
