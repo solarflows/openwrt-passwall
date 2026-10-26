@@ -1,0 +1,106 @@
+name: "Rolling Sync and Rebase"
+
+on:
+  schedule:
+    - cron: '30 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_rebase:
+        description: 'Force rebase even if upstream is unchanged'
+        type: boolean
+        required: false
+        default: false
+      trigger_compile:
+        description: 'Trigger Pre-release compilation after sync'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync_rolling:
+    name: Sync Rolling Branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      rebased: ${{ steps.rebase.outputs.rebased }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: rolling
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git || git remote set-url upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git
+          git fetch upstream_remote --tags --force
+          git fetch upstream_remote main
+
+      - name: Check for upstream updates
+        id: check_update
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream_remote/main)
+          BASE_SHA=$(git merge-base upstream_remote/main rolling 2>/dev/null || echo "")
+          echo "Upstream main commit: ${UPSTREAM_SHA}"
+          echo "Rolling merge-base:   ${BASE_SHA}"
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+
+          if [ "$UPSTREAM_SHA" = "$BASE_SHA" ] && [ "${{ inputs.force_rebase }}" != "true" ]; then
+            echo "Rolling branch is already based on the latest upstream commit. Nothing to do."
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream changes detected or force rebase requested."
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebase rolling branch onto upstream
+        id: rebase
+        if: steps.check_update.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_SHA="${{ steps.check_update.outputs.upstream_sha }}"
+          BASE_SHA="${{ steps.check_update.outputs.base_sha }}"
+          echo "Rebasing rolling onto upstream ($UPSTREAM_SHA) with base ($BASE_SHA)..."
+
+          # Rebase linear commit stack onto latest upstream
+          if [ -n "$BASE_SHA" ]; then
+            REBASE_CMD="git rebase --empty=drop --onto upstream_remote/main $BASE_SHA rolling"
+          else
+            REBASE_CMD="git rebase --empty=drop upstream_remote/main rolling"
+          fi
+
+          if ! eval "$REBASE_CMD"; then
+            echo "::error::Rebase conflict detected on rolling branch. Aborting to keep rolling branch intact."
+            git diff
+            git rebase --abort
+            exit 1
+          fi
+
+          echo "Rebase completed cleanly. Pushing rolling branch..."
+          git push origin rolling --force-with-lease
+          echo "rebased=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger compile workflow via gh CLI
+        if: (steps.rebase.outputs.rebased == 'true' || inputs.force_rebase == true) && (inputs.trigger_compile != false)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering Auto compile workflow for rolling Pre-release..."
+          gh workflow run "Auto compile with openwrt sdk" \
+            --ref rolling \
+            -f target_ref=rolling \
+            -f prerelease=true \
+            -f force_compile=true || echo "::warning::Failed to trigger compile workflow"

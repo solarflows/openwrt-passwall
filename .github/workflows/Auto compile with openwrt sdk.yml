@@ -21,6 +21,16 @@ on:
         description: 'Custom tag name override'
         required: false
         type: string
+      target_ref:
+        description: 'Target ref or branch to compile'
+        required: false
+        type: string
+        default: ''
+      force_compile:
+        description: 'Force compile even if tag already exists'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       target_ref:
