@@ -36,8 +36,18 @@ function log(...)
 	end
 end
 
+local _is_old_uci_cache = nil
 function is_old_uci()
-	return sys.call("grep -E 'require[ \t]*\"uci\"' /usr/lib/lua/luci/model/uci.lua >/dev/null 2>&1") == 0
+	if _is_old_uci_cache ~= nil then return _is_old_uci_cache end
+	local f = io.open("/usr/lib/lua/luci/model/uci.lua", "r")
+	if f then
+		local content = f:read("*a")
+		f:close()
+		_is_old_uci_cache = (content:find('require%s+"uci"') ~= nil)
+	else
+		_is_old_uci_cache = false
+	end
+	return _is_old_uci_cache
 end
 
 function uci_del(config, section, option)
@@ -90,10 +100,12 @@ function uci_get_c(section, option)
 end
 
 function uci_set_c(section, option, value)
+	_valid_nodes_cache = nil
 	return uci_set(c_config, section, option, value)
 end
 
 function uci_save_c(commit, apply)
+	_valid_nodes_cache = nil
 	return uci_save(uci, c_config, commit, apply)
 end
 
@@ -261,6 +273,19 @@ end
 -- 计算文件 MD5
 function md5_file(path)
 	if type(path) ~= "string" then return "" end
+	if nixio and nixio.crypto and nixio.crypto.hash and nixio.open then
+		local h = nixio.crypto.hash("md5")
+		local f = nixio.open(path, "r")
+		if f then
+			while true do
+				local chunk = f:read(4096)
+				if not chunk or #chunk == 0 then break end
+				h:update(chunk)
+			end
+			f:close()
+			return h:final()
+		end
+	end
 	local quoted = "'" .. path:gsub("'", "'\\''") .. "'"
 	local out = sys.exec("md5sum " .. quoted)
 	if not out then return "" end
@@ -270,6 +295,11 @@ end
 -- 计算字符串 MD5
 function md5_string(str)
 	if type(str) ~= "string" then return "" end
+	if nixio and nixio.crypto and nixio.crypto.hash then
+		local h = nixio.crypto.hash("md5")
+		h:update(str)
+		return h:final()
+	end
 	local path = trim(sys.exec("mktemp /tmp/md5.XXXXXX") or "")
 	if path == "" then return "" end
 	local md5 = fs.writefile(path, str) == #str and md5_file(path) or ""
@@ -641,7 +671,25 @@ function get_domain_from_url(url)
 	return url
 end
 
-function get_valid_nodes()
+local _valid_nodes_cache = nil
+local _special_proto_trans = nil
+
+function clear_valid_nodes_cache()
+	_valid_nodes_cache = nil
+end
+
+function get_valid_nodes(force_reload)
+	if _valid_nodes_cache and not force_reload then
+		return _valid_nodes_cache
+	end
+	if not _special_proto_trans then
+		_special_proto_trans = {
+			_balancing = i18n.translatef("_balancing"),
+			_shunt = i18n.translatef("_shunt"),
+			_iface = i18n.translatef("_iface"),
+			_urltest = i18n.translatef("_urltest")
+		}
+	end
 	local show_node_info = uci_get_c("@global_other[0]", "show_node_info") or "0"
 	local nodes = {}
 	local default_nodes = {}
@@ -652,7 +700,8 @@ function get_valid_nodes()
 			local type_name = e.type
 			if e.type == "sing-box" then type_name = "Sing-Box" end
 			if e.protocol and (e.protocol == "_balancing" or e.protocol == "_shunt" or e.protocol == "_iface" or e.protocol == "_urltest") then
-				e["remark"] = trim("%s：[%s]" % {type_name .. " " .. i18n.translatef(e.protocol), e.remarks})
+				local proto_txt = _special_proto_trans[e.protocol] or i18n.translatef(e.protocol)
+				e["remark"] = trim("%s：[%s]" % {type_name .. " " .. proto_txt, e.remarks})
 				e["node_type"] = "special"
 				if not e.group or e.group == "" then
 					default_nodes[#default_nodes + 1] = e
@@ -711,10 +760,11 @@ function get_valid_nodes()
 	end)
 	for i = 1, #default_nodes do nodes[#nodes + 1] = default_nodes[i] end
 	for i = 1, #other_nodes do nodes[#nodes + 1] = other_nodes[i] end
+	_valid_nodes_cache = nodes
 	return nodes
 end
 
-function get_node_list()
+function get_node_list(nodes_table)
 	local node_list = {
 		socks_list = {},
 		normal_list = {},
@@ -728,7 +778,7 @@ function get_node_list()
 			}
 		end
 	end)
-	for k, e in ipairs(get_valid_nodes()) do
+	for k, e in ipairs(nodes_table or get_valid_nodes()) do
 		if e.node_type == "normal" then
 			node_list.normal_list[#node_list.normal_list + 1] = {
 				id = e[".name"],
@@ -853,18 +903,42 @@ function get_customed_path(e)
 	return uci_get_c("@global_app[0]", e .. "_file")
 end
 
+local _finded_cache = {}
 function finded_com(e)
-	local bin = get_app_path(e)
-	if not bin then return end
-	local s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
-	if s == "" then
-		s = nil
+	if _finded_cache["com_" .. e] ~= nil then
+		return _finded_cache["com_" .. e]
 	end
+	local bin = get_app_path(e)
+	local s = nil
+	if bin and bin ~= "" then
+		if fs.access(bin, "rwx", "rx", "rx") or fs.access(bin) then
+			s = bin
+		else
+			s = luci.sys.exec('echo -n $(type -t -p "%s" | head -n1)' % { bin })
+			if s == "" then s = nil end
+		end
+	end
+	_finded_cache["com_" .. e] = s
 	return s
 end
 
 function finded(e)
-	return luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	if _finded_cache["bin_" .. e] ~= nil then
+		return _finded_cache["bin_" .. e]
+	end
+	local s = ""
+	for _, prefix in ipairs({"/usr/bin/", "/bin/", "/usr/sbin/", "/sbin/"}) do
+		local p = prefix .. e
+		if fs.access(p, "rwx", "rx", "rx") or fs.access(p) then
+			s = p
+			break
+		end
+	end
+	if s == "" then
+		s = luci.sys.exec('echo -n $(type -t -p "/bin/%s" -p "/usr/bin/%s" "%s" | head -n1)' % {e, e, e})
+	end
+	_finded_cache["bin_" .. e] = s
+	return s
 end
 
 function is_finded(e)
@@ -1222,10 +1296,10 @@ local default_file_tree = {
 local function get_api_json(url)
 	local gh_proxy = uci_get_c("@global_app[0]", "gh_proxy_url") or ""
 	local return_code, content
-	if gh_proxy ~= "" then
-		url = gh_proxy .. url
-		return_code, content = curl_direct(url, nil, curl_args)
-	else
+	if gh_proxy ~= "" and not url:find("^https://api%.github%.com/") then
+		return_code, content = curl_direct(gh_proxy .. url, nil, curl_args)
+	end
+	if not content or content == "" or return_code ~= 0 then
 		return_code, content = curl_auto(url, nil, curl_args)
 	end
 	if return_code ~= 0 or content == "" then return {} end
@@ -1564,17 +1638,17 @@ function get_version()
 end
 
 function to_check_self()
-	local release = get_api_json(com[appname]:get_url())
-	if type(release) == "table" and #release > 0 then
-		release = release[1]
-	end
-	if type(release) ~= "table" or not release.tag_name then
+	local releases = get_api_json(com[appname]:get_url())
+	if type(releases) ~= "table" then
 		return {code = 1, error = i18n.translate("Get remote version info failed.")}
 	end
-	local local_version  = get_version()
-	-- Keep the release suffix (-1, -2, ...) so package revisions are compared too.
-	local remote_version = release.tag_name:gsub("^v", "")
-	local has_update = compare_versions(local_version, "<", remote_version)
+	if releases.tag_name then
+		releases = {releases}
+	end
+	if #releases == 0 then
+		return {code = 1, error = i18n.translate("Get remote version info failed.")}
+	end
+
 	local prefix, extension
 	if sys.call("command -v apk >/dev/null 2>&1") == 0 then
 		prefix, extension = "25.12+_", ".apk"
@@ -1585,21 +1659,36 @@ function to_check_self()
 		prefix = compare_versions(kernel, "<", "5.11") and "22.03-_" or "23.05-24.10_"
 		extension = ".ipk"
 	end
-	local main, i18n_package
-	for _, search_prefix in ipairs({prefix, ""}) do
-		for _, asset in ipairs(release.assets or {}) do
-			local name = asset.name or ""
-			if name:find(search_prefix, 1, true) == 1 and name:sub(-#extension) == extension then
-				name = name:sub(#search_prefix + 1)
-				if not main and name:match("^luci%-app%-" .. appname .. "[_%-]%d") then main = asset end
-				if not i18n_package and name:match("^luci%-i18n%-" .. appname .. "%-zh%-cn[_%-]%d") then i18n_package = asset end
+
+	local release, main, i18n_package
+	for _, rel in ipairs(releases) do
+		if type(rel) == "table" and rel.tag_name and rel.assets and #rel.assets > 0 then
+			local m, i18n_pkg
+			for _, search_prefix in ipairs({prefix, ""}) do
+				for _, asset in ipairs(rel.assets or {}) do
+					local name = asset.name or ""
+					if name:find(search_prefix, 1, true) == 1 and name:sub(-#extension) == extension then
+						name = name:sub(#search_prefix + 1)
+						if not m and name:match("^luci%-app%-" .. appname .. "[_%-]%d") then m = asset end
+						if not i18n_pkg and name:match("^luci%-i18n%-" .. appname .. "%-zh%-cn[_%-]%d") then i18n_pkg = asset end
+					end
+				end
+				if m and i18n_pkg then break end
+			end
+			if m and i18n_pkg then
+				release, main, i18n_package = rel, m, i18n_pkg
+				break
 			end
 		end
-		if main and i18n_package then break end
 	end
-	if not main or not i18n_package then
+
+	if not release or not main or not i18n_package then
 		return {code = 1, error = i18n.translate("Get remote version info failed.")}
 	end
+	local local_version  = get_version()
+	-- Keep the release suffix (-1, -2, ...) so package revisions are compared too.
+	local remote_version = release.tag_name:gsub("^v", "")
+	local has_update = compare_versions(local_version, "<", remote_version)
 	cache_update_digests(appname, {main, i18n_package})
 	return {
 		code = 0, has_update = has_update, local_version = local_version,

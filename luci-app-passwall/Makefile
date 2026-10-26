@@ -160,13 +160,28 @@ endef
 define Package/$(PKG_NAME)/conffiles
 /etc/config/passwall
 /etc/config/passwall_server
+/etc/passwall/rules/block_host
+/etc/passwall/rules/block_ip
+/etc/passwall/rules/direct_host
+/etc/passwall/rules/direct_ip
+/etc/passwall/rules/domains_excluded
+/etc/passwall/rules/lanlist_ipv4
+/etc/passwall/rules/lanlist_ipv6
+/etc/passwall/rules/proxy_host
+/etc/passwall/rules/proxy_ip
 /etc/passwall/
 endef
 
 define Package/$(PKG_NAME)/postinst
 #!/bin/sh
+[ -z "$${IPKG_INSTROOT}" ] && {
+	uci -q get passwall.@global_optimize[0] >/dev/null || {
+		uci -q add passwall global_optimize >/dev/null
+		uci -q commit passwall
+	}
+}
 rm -f $${IPKG_INSTROOT}/usr/share/passwall/rules/*.nft
-rm -rf $${IPKG_INSTROOT}/tmp/etc/passwall_tmp
+rm -f $${IPKG_INSTROOT}/tmp/etc/passwall_tmp/passwall_version $${IPKG_INSTROOT}/tmp/etc/passwall_tmp/binver_*
 exit 0
 endef
 
