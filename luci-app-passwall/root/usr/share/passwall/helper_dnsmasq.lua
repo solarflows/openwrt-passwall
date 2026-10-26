@@ -120,6 +120,8 @@ function copy_instance(var)
 	end
 
 	if fs.access(conf_file) then
+		local strip_filter_aaaa = ((api.uci_get_c("@global_optimize[0]", "fork_optimize") or api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+			and (api.uci_get_c("@global_forwarding[0]", "ipv6_tproxy") == "1")
 		for line in io.lines(conf_file) do
 			local filter
 			if line:find("passwall") then filter = true end
@@ -128,6 +130,7 @@ function copy_instance(var)
 			if line:find("server=") == 1 then filter = true end
 			if line:find("port=") == 1 then filter = true end
 			if line:find("min%-cache%-ttl") == 1 then filter = true end
+			if strip_filter_aaaa and line:find("filter%-AAAA") == 1 then filter = true end
 			if line:find("conf%-dir=") == 1 then
 				filter = true
 				if TMP_DNSMASQ_PATH then
