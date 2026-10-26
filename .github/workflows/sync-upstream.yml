@@ -1,0 +1,164 @@
+name: "Sync Upstream and Rebase Main"
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync and rebase even if upstream is unchanged'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  sync_and_rebase:
+    name: Sync and Rebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git || git remote set-url upstream_remote https://github.com/Openwrt-Passwall/openwrt-passwall.git
+          git fetch upstream_remote --tags --force
+          git fetch upstream_remote main
+
+      - name: Check for upstream updates
+        id: check_update
+        run: |
+          UPSTREAM_SHA=$(git rev-parse upstream_remote/main)
+          PREV_UPSTREAM_SHA=$(git merge-base upstream_remote/main origin/main 2>/dev/null || git rev-parse origin/upstream 2>/dev/null || echo "")
+          echo "Upstream main commit:     ${UPSTREAM_SHA}"
+          echo "Previous upstream commit: ${PREV_UPSTREAM_SHA}"
+          echo "prev_upstream_sha=${PREV_UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "${UPSTREAM_SHA}" origin/main 2>/dev/null && [ "${{ inputs.force_sync }}" != "true" ]; then
+            echo "Upstream main is already integrated into local main branch. Nothing to do."
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream changes detected."
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync main branch with upstream
+        if: steps.check_update.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git checkout main
+          UPSTREAM_SHA="${{ steps.check_update.outputs.upstream_sha }}"
+          SHORT_SHA="${UPSTREAM_SHA:0:8}"
+          echo "Syncing upstream ($SHORT_SHA) into main..."
+
+          resolve_makefile() {
+            [ ! -f "luci-app-passwall/Makefile" ] && return 1
+            python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
+          }
+
+          if ! git merge --no-edit -m "merge: sync upstream ($SHORT_SHA)" upstream_remote/main; then
+            echo "::warning::Initial merge encountered conflict. Attempting automated resolution..."
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            echo "Conflicted files: $CONFLICT_FILES"
+
+            # Auto-resolve Makefile version conflict
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
+              if resolve_makefile; then
+                echo "Auto-resolved Makefile version conflict."
+                git add luci-app-passwall/Makefile
+              fi
+            fi
+
+            # Auto-resolve downstream workflow customization conflict
+            if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/Auto compile with openwrt sdk\.yml"; then
+              git checkout --ours ".github/workflows/Auto compile with openwrt sdk.yml"
+              git add ".github/workflows/Auto compile with openwrt sdk.yml"
+              echo "Auto-resolved workflow conflict using downstream version."
+            fi
+
+            # Auto-resolve status.htm IP check card anchor conflict while keeping upstream changes elsewhere
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/view/passwall/global/status\.htm"; then
+              python3 -c "import re, sys; p='luci-app-passwall/luasrc/view/passwall/global/status.htm'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'check_ip_info' in m.group(1) else m.group(2), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add luci-app-passwall/luasrc/view/passwall/global/status.htm
+              echo "Auto-resolved status.htm conflict preserving check_ip_info."
+            fi
+
+            # Auto-resolve translation conflict by combining entries
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
+              python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
+              git add luci-app-passwall/po/zh-cn/passwall.po
+              echo "Auto-resolved passwall.po translation conflict."
+            fi
+
+            # Auto-resolve global.lua conflict by preserving advanced log features
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/model/cbi/passwall/client/global\.lua"; then
+              python3 -c "import re, sys; p='luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', r'\1\n\n\2', c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua
+              echo "Auto-resolved global.lua conflict preserving custom features."
+            fi
+
+            # Auto-resolve app.sh smartdns-shared and custom logging conflict
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
+              python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/app.sh'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1)+('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S); open(p,'w',encoding='utf-8').write(c); sys.exit(0 if '<<<<<<<' not in c else 1)"
+              git add luci-app-passwall/root/usr/share/passwall/app.sh
+              echo "Auto-resolved app.sh conflict."
+            fi
+
+            REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ -z "$REMAINING_CONFLICTS" ]; then
+              git commit -m "merge: sync upstream ($SHORT_SHA) with auto-resolved conflicts"
+              echo "Merge conflicts resolved successfully."
+            else
+              echo "::error::Substantive code conflict detected! Aborting merge to keep main branch clean."
+              git diff
+              git merge --abort
+              exit 1
+            fi
+          fi
+
+          # Auto-bump PKG_RELEASE if current Makefile version matches or lags behind latest GitHub release
+          REMOTE_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
+          CUR_REL=$(awk -F ':=' '/^PKG_RELEASE:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
+          if [ -n "$REMOTE_TAG" ] && [ "${REMOTE_TAG%-*}" = "$CUR_VER" ]; then
+            REMOTE_REL="${REMOTE_TAG##*-}"
+            if [ "$CUR_REL" -le "$REMOTE_REL" ] 2>/dev/null; then
+              NEXT_REL=$((REMOTE_REL + 1))
+              sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${NEXT_REL}/" luci-app-passwall/Makefile
+              git add luci-app-passwall/Makefile
+              git commit -m "build: bump PKG_RELEASE to ${NEXT_REL} for upstream sync"
+              echo "Auto-bumped PKG_RELEASE to ${NEXT_REL} (previous release: ${REMOTE_TAG})."
+            fi
+          fi
+
+          echo "Sync completed successfully."
+          git checkout -B upstream "$UPSTREAM_SHA"
+          git push origin upstream --force-with-lease
+          git push origin --tags --force 2>/dev/null || true
+          git checkout main
+          git push origin main --force-with-lease
+          git checkout -B custom main
+          git push origin custom --force-with-lease
+
+      - name: Trigger compile workflow
+        if: steps.check_update.outputs.has_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering Auto compile workflow for main branch..."
+          gh workflow run "Auto compile with openwrt sdk" --ref main || echo "::warning::Failed to trigger compile workflow"
