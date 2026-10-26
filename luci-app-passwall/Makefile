@@ -160,6 +160,15 @@ endef
 define Package/$(PKG_NAME)/conffiles
 /etc/config/passwall
 /etc/config/passwall_server
+/etc/passwall/rules/block_host
+/etc/passwall/rules/block_ip
+/etc/passwall/rules/direct_host
+/etc/passwall/rules/direct_ip
+/etc/passwall/rules/domains_excluded
+/etc/passwall/rules/lanlist_ipv4
+/etc/passwall/rules/lanlist_ipv6
+/etc/passwall/rules/proxy_host
+/etc/passwall/rules/proxy_ip
 /etc/passwall/
 endef
 
