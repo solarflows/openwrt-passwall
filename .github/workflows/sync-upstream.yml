@@ -43,7 +43,7 @@ jobs:
         id: check_update
         run: |
           UPSTREAM_SHA=$(git rev-parse upstream_remote/main)
-          PREV_UPSTREAM_SHA=$(git rev-parse origin/upstream 2>/dev/null || echo "")
+          PREV_UPSTREAM_SHA=$(git merge-base upstream_remote/main origin/main 2>/dev/null || git rev-parse origin/upstream 2>/dev/null || echo "")
           echo "Upstream main commit:     ${UPSTREAM_SHA}"
           echo "Previous upstream commit: ${PREV_UPSTREAM_SHA}"
           echo "prev_upstream_sha=${PREV_UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
@@ -56,93 +56,79 @@ jobs:
             echo "has_update=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Rebase main branch onto upstream
+      - name: Sync main branch with upstream
         if: steps.check_update.outputs.has_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git checkout main
-
-          # Attempt rebase using --onto to cleanly replay custom commits onto new upstream
-          PREV_UPSTREAM="${{ steps.check_update.outputs.prev_upstream_sha }}"
           UPSTREAM_SHA="${{ steps.check_update.outputs.upstream_sha }}"
-          if [ -n "$PREV_UPSTREAM" ] && git merge-base --is-ancestor "$PREV_UPSTREAM" main 2>/dev/null; then
-            echo "Rebasing main onto upstream with boundary: $PREV_UPSTREAM"
-            REBASE_CMD="git rebase --empty=drop --onto upstream_remote/main $PREV_UPSTREAM main"
-          else
-            echo "Rebasing main onto upstream"
-            REBASE_CMD="git rebase --empty=drop upstream_remote/main"
-          fi
+          SHORT_SHA="${UPSTREAM_SHA:0:8}"
+          echo "Syncing upstream ($SHORT_SHA) into main..."
 
-          if ! eval "$REBASE_CMD"; then
-            echo "::warning::Initial rebase encountered conflict. Attempting automated resolution..."
+          resolve_makefile() {
+            [ ! -f "luci-app-passwall/Makefile" ] && return 1
+            python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
+          }
 
-            resolve_makefile() {
-              [ ! -f "luci-app-passwall/Makefile" ] && return 1
-              python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
-            }
+          if ! git merge --no-edit -m "merge: sync upstream ($SHORT_SHA)" upstream_remote/main; then
+            echo "::warning::Initial merge encountered conflict. Attempting automated resolution..."
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            echo "Conflicted files: $CONFLICT_FILES"
 
-            while [ -d ".git/rebase-merge" ] || [ -d ".git/rebase-apply" ]; do
-              CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
-              echo "Conflicted files: $CONFLICT_FILES"
-
-              # Auto-resolve Makefile version conflict
-              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
-                if resolve_makefile; then
-                  echo "Auto-resolved Makefile version conflict."
-                  git add luci-app-passwall/Makefile
-                fi
+            # Auto-resolve Makefile version conflict
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
+              if resolve_makefile; then
+                echo "Auto-resolved Makefile version conflict."
+                git add luci-app-passwall/Makefile
               fi
+            fi
 
-              # Auto-resolve downstream workflow customization conflict
-              if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/Auto compile with openwrt sdk\.yml"; then
-                git checkout --theirs ".github/workflows/Auto compile with openwrt sdk.yml"
-                git add ".github/workflows/Auto compile with openwrt sdk.yml"
-                echo "Auto-resolved workflow conflict using downstream version."
-              fi
+            # Auto-resolve downstream workflow customization conflict
+            if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/Auto compile with openwrt sdk\.yml"; then
+              git checkout --ours ".github/workflows/Auto compile with openwrt sdk.yml"
+              git add ".github/workflows/Auto compile with openwrt sdk.yml"
+              echo "Auto-resolved workflow conflict using downstream version."
+            fi
 
-              # Auto-resolve status.htm IP check card anchor conflict while keeping upstream changes elsewhere
-              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/view/passwall/global/status\.htm"; then
-                python3 -c "import re, sys; p='luci-app-passwall/luasrc/view/passwall/global/status.htm'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(2) if 'check_ip_info' in m.group(2) else m.group(1), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
-                git add luci-app-passwall/luasrc/view/passwall/global/status.htm
-                echo "Auto-resolved status.htm conflict preserving check_ip_info."
-              fi
+            # Auto-resolve status.htm IP check card anchor conflict while keeping upstream changes elsewhere
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/view/passwall/global/status\.htm"; then
+              python3 -c "import re, sys; p='luci-app-passwall/luasrc/view/passwall/global/status.htm'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'check_ip_info' in m.group(1) else m.group(2), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add luci-app-passwall/luasrc/view/passwall/global/status.htm
+              echo "Auto-resolved status.htm conflict preserving check_ip_info."
+            fi
 
-              # Auto-resolve translation conflict by combining entries
-              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
-                python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
-                git add luci-app-passwall/po/zh-cn/passwall.po
-                echo "Auto-resolved passwall.po translation conflict."
-              fi
+            # Auto-resolve translation conflict by combining entries
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
+              python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
+              git add luci-app-passwall/po/zh-cn/passwall.po
+              echo "Auto-resolved passwall.po translation conflict."
+            fi
 
-              # Auto-resolve global.lua conflict by preserving advanced log features
-              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/model/cbi/passwall/client/global\.lua"; then
-                python3 -c "import re, sys; p='luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', r'\1\n\n\2', c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
-                git add luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua
-                echo "Auto-resolved global.lua conflict preserving custom features."
-              fi
+            # Auto-resolve global.lua conflict by preserving advanced log features
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/model/cbi/passwall/client/global\.lua"; then
+              python3 -c "import re, sys; p='luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', r'\1\n\n\2', c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua
+              echo "Auto-resolved global.lua conflict preserving custom features."
+            fi
 
-              # Auto-resolve app.sh smartdns-shared and custom logging conflict
-              if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
-                python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/app.sh'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1)+('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S); open(p,'w',encoding='utf-8').write(c); sys.exit(0 if '<<<<<<<' not in c else 1)"
-                git add luci-app-passwall/root/usr/share/passwall/app.sh
-                echo "Auto-resolved app.sh conflict."
-              fi
+            # Auto-resolve app.sh smartdns-shared and custom logging conflict
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
+              python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/app.sh'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1)+('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S); open(p,'w',encoding='utf-8').write(c); sys.exit(0 if '<<<<<<<' not in c else 1)"
+              git add luci-app-passwall/root/usr/share/passwall/app.sh
+              echo "Auto-resolved app.sh conflict."
+            fi
 
-              REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
-              if [ -z "$REMAINING_CONFLICTS" ]; then
-                if git diff --cached --quiet; then
-                  git rebase --skip || true
-                else
-                  GIT_EDITOR=true git rebase --continue || true
-                fi
-              else
-                echo "::error::Substantive code conflict detected! Aborting rebase to keep main branch clean."
-                git diff
-                git rebase --abort
-                exit 1
-              fi
-            done
+            REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ -z "$REMAINING_CONFLICTS" ]; then
+              git commit -m "merge: sync upstream ($SHORT_SHA) with auto-resolved conflicts"
+              echo "Merge conflicts resolved successfully."
+            else
+              echo "::error::Substantive code conflict detected! Aborting merge to keep main branch clean."
+              git diff
+              git merge --abort
+              exit 1
+            fi
           fi
 
           # Auto-bump PKG_RELEASE if current Makefile version matches or lags behind latest GitHub release
@@ -160,7 +146,7 @@ jobs:
             fi
           fi
 
-          echo "Rebase completed successfully."
+          echo "Sync completed successfully."
           git checkout -B upstream "$UPSTREAM_SHA"
           git push origin upstream --force-with-lease
           git push origin --tags --force 2>/dev/null || true
