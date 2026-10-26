@@ -19,6 +19,43 @@ local UrlEncode, UrlDecode = api.UrlEncode, api.UrlDecode
 local fs = api.fs
 local uci, uci_get, uci_set, uci_del, uci_foreach, uci_save = api.uci, api.uci_get_c, api.uci_set_c, api.uci_del_c, api.uci_foreach_c, api.uci_save_c
 
+if (uci_get("@global_optimize[0]", "fork_optimize") or uci_get("@global_forwarding[0]", "fork_optimize") or "1") == "1" then
+	local native_uci = require("uci").cursor()
+	uci = native_uci
+	local mt = getmetatable(native_uci)
+	mt.section = function(self, config, stype, name, values)
+		local sid = name or api.gen_random_char()
+		self:set(config, sid, stype)
+		if values then
+			for k, v in pairs(values) do self:set(config, sid, k, v) end
+		end
+		return sid
+	end
+	uci_get = function(section, option)
+		if not section then return uci:get_all(c_config)
+		elseif option then return uci:get(c_config, section, option)
+		else return uci:get_all(c_config, section) end
+	end
+	uci_set = function(section, option, value)
+		if type(value) == "number" then value = tostring(value) end
+		if value and #value > 0 then
+			if option then return uci:set(c_config, section, option, value)
+			else return uci:set(c_config, section, value) end
+		else
+			if option then return uci:delete(c_config, section, option)
+			else return uci:delete(c_config, section) end
+		end
+	end
+	uci_del = function(section, option)
+		if option then return uci:delete(c_config, section, option)
+		else return uci:delete(c_config, section) end
+	end
+	uci_foreach = function(stype, func) return uci:foreach(c_config, stype, func) end
+	uci_save = function(commit)
+		if commit then uci:commit(c_config) else uci:save(c_config) end
+	end
+end
+
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
 local tinsert = table.insert
@@ -1813,6 +1850,7 @@ local function curl(url, file, ua, mode)
 	curl_args[#curl_args + 1] = '-c "' .. cookie_file .. '" -b "' .. cookie_file .. '"'
 
 	local return_code, result
+	local http_code, header_str = 0, ""
 	if mode == "direct" then
 		return_code, result = api.curl_direct(url, file, curl_args)
 	elseif mode == "proxy" then
@@ -2146,6 +2184,64 @@ local function update_node(manual)
 	return true
 end
 
+-- 过滤无效物理网络节点（回环、全零、非法端口等非网络出站卡片）
+local function is_invalid_node(node)
+	if not node then return true end
+	local addr = node.address or ""
+	if addr == "127.0.0.1" or addr == "0.0.0.0" or addr:lower() == "localhost" or addr == "::1" then
+		return true
+	end
+	local has_hop = (node.hysteria_hop and node.hysteria_hop ~= "") or (node.hysteria2_hop and node.hysteria2_hop ~= "")
+	local port = tonumber(node.port) or 0
+	if not has_hop and (port <= 0 or port > 65535) then
+		return true
+	end
+	if has_hop and (port < 0 or port > 65535) then
+		return true
+	end
+	return false
+end
+
+-- 计算纯物理节点拓扑指纹（解耦动态展示用量与元数据）
+local function get_node_fingerprint(node_list)
+	if not node_list or #node_list == 0 then return "" end
+	local list_fingerprints = {}
+	for _, node in ipairs(node_list) do
+		local core_parts = {
+			node.type or "",
+			node.protocol or "",
+			node.address or "",
+			tostring(node.port or ""),
+			node.uuid or "",
+			node.password or "",
+			node.encryption or "",
+			node.method or "",
+			node.security or "",
+			node.tls or "",
+			node.tls_serverName or "",
+			node.transport or "",
+			node.tcp_guise or "",
+			node.ws_host or "",
+			node.ws_path or "",
+			node.h2_host or "",
+			node.h2_path or "",
+			node.xhttp_host or "",
+			node.xhttp_path or "",
+			node.grpc_serviceName or "",
+			node.flow or "",
+			node.fingerprint or ""
+		}
+		-- 清洗 remarks 中的动态流量与日期信息后参与指纹
+		local clean_remarks = (node.remarks or ""):gsub("%s+", "")
+			:gsub("[%d%.]+%s*[KkMmGgTt][Bb]", "")
+			:gsub("%d%d%d%d[-/%.]%d%d?[-/%.]%d%d?", "")
+		tinsert(core_parts, clean_remarks)
+		tinsert(list_fingerprints, table.concat(core_parts, "|"))
+	end
+	table.sort(list_fingerprints)
+	return api.md5_string(table.concat(list_fingerprints, "\n"))
+end
+
 local function parse_link(raw, add_mode, group, sub_cfg)
 	if raw and #raw > 0 then
 		local cfgid
@@ -2209,10 +2305,11 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 							log('丢弃节点：' .. result.remarks .. " ，原因：" .. result.error_msg)
 						elseif not result.type then
 							log('丢弃节点：' .. result.remarks .. " ，找不到可使用二进制。")
-							-- 过滤无效物理网络节点（回环、全零等非网络出站卡片）
-						elseif (add_mode == "2" and is_filter_keyword(keyword_filter, result.remarks)) or not result.address or result.remarks == "NULL" or result.address == "127.0.0.1" or result.address == "0.0.0.0" or
+						elseif add_mode == "2" and is_filter_keyword(keyword_filter, result.remarks) then
+							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：匹配到关键字过滤规则")
+						elseif (add_mode == "2" and is_invalid_node(result)) or not result.address or result.remarks == "NULL" or
 								(not datatypes.hostname(result.address) and not (api.is_ip(result.address))) then
-							log('丢弃过滤节点：' .. result.type .. ' 节点，' .. result.remarks)
+							log("丢弃过滤节点：" .. (result.type or "未知") .. " 节点，" .. result.remarks .. " ，原因：无效物理网络地址或端口 (回环/全零/非法端口/非法地址)")
 						else
 							tinsert(node_list, result)
 						end
@@ -2302,11 +2399,11 @@ local execute = function()
 					log_buffer = {}
 					local parsed_nodes = parse_link(raw_data, "2", remark, value)
 					local old_md5 = value.md5 or ""
-					local new_md5 = #parsed_nodes > 0 and api.md5_string(jsonStringify(parsed_nodes)) or ""
+					local new_md5 = #parsed_nodes > 0 and get_node_fingerprint(parsed_nodes) or ""
 					-- 仅当解析出有效节点且节点集合与上次完全一致时，跳过节点重写与服务重启
 					if not manual_sub and new_md5 ~= "" and old_md5 == new_md5 then
 						log_buffer = nil -- 无物理变动，直接丢弃暂存的丢弃与计数明细
-						log('订阅:【' .. remark .. '】没有变化，无需更新。')
+						log(string.format("订阅:【%s】物理出站配置未发生变动，跳过节点重写与服务重启。", remark))
 					else
 						-- 节点发生变动时，回放前置解析期间的节点统计与丢弃日志
 						flush_log_buffer()
@@ -2375,5 +2472,5 @@ end
 update_lock:close()
 if restart_required then
 	local action = arg[3] == "cron" and " cron" or ""
-	luci.sys.call("/etc/init.d/passwall restart" .. action .. " > /dev/null 2>&1 &")
+	luci.sys.call("(command -v setsid >/dev/null 2>&1 && setsid /etc/init.d/passwall restart" .. action .. " || nohup /etc/init.d/passwall restart" .. action .. ") > /dev/null 2>&1 &")
 end
