@@ -53,7 +53,18 @@ function geo_convert_srs(var)
 	local rule_name = var["rule_name"]
 	local output_srs_file = GEO_VAR.TO_SRS_PATH .. prefix .. "-" .. rule_name .. ".srs"
 	local bin = api.finded_com("geoview")
-	if not fs.access(output_srs_file) and bin then
+	if not bin then return end
+
+	local srs_stat = fs.stat(output_srs_file)
+	local dat_stat = fs.stat(geo_path)
+	local need_convert = true
+	if srs_stat and srs_stat.size and srs_stat.size > 0 and dat_stat and dat_stat.mtime and srs_stat.mtime then
+		if srs_stat.mtime >= dat_stat.mtime then
+			need_convert = false
+		end
+	end
+
+	if need_convert then
 		local cmd = string.format("%q -type %q -action convert -input %q -list %q -output %q -lowmem=true",
 			bin, prefix, geo_path, rule_name, output_srs_file)
 		local code, out = api.exec_call(cmd)
@@ -1239,6 +1250,11 @@ function gen_config(var)
 	local outbounds = {}
 	local rule_set_table = {}
 	local COMMON = {}
+	local rules = {}
+	local inner_fakedns = "0"
+	local fork_optimize = ((api.uci_get_c("@global_optimize[0]", "fork_optimize") or api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+	local ut_outbound_tags = {}
+	local urltest_outbounds = {}
 
 	local singbox_settings = api.uci_get_c("@global_singbox[0]") or {}
 
@@ -1412,8 +1428,12 @@ function gen_config(var)
 			local urltest_id = _node[".name"]
 			local urltest_tag = "urltest-" .. urltest_id
 			-- existing urltest
+			if fork_optimize and urltest_outbounds[urltest_tag] then
+				return urltest_outbounds[urltest_tag], true
+			end
 			for _, v in ipairs(outbounds) do
 				if v.tag == urltest_tag then
+					if fork_optimize then urltest_outbounds[urltest_tag] = v end
 					return v, true
 				end
 			end
@@ -1434,17 +1454,30 @@ function gen_config(var)
 				local ut_node_id = ut_nodes[i]
 				local ut_node_tag = "ut-" .. ut_node_id
 				local is_new_ut_node = true
-				for _, outbound in ipairs(outbounds) do
-					if string.sub(outbound.tag, 1, #ut_node_tag) == ut_node_tag then
+				if fork_optimize then
+					local existing_tag = ut_outbound_tags[ut_node_id]
+					if existing_tag then
 						is_new_ut_node = false
-						valid_nodes[#valid_nodes + 1] = outbound.tag
-						break
+						valid_nodes[#valid_nodes + 1] = existing_tag
+					end
+				else
+					for _, outbound in ipairs(outbounds) do
+						if string.sub(outbound.tag, 1, #ut_node_tag) == ut_node_tag then
+							is_new_ut_node = false
+							valid_nodes[#valid_nodes + 1] = outbound.tag
+							break
+						end
 					end
 				end
 				if is_new_ut_node then
 					local outboundTag = gen_outbound_get_tag(flag, ut_node_id, ut_node_tag, { fragment = singbox_settings.fragment == "1" or nil, record_fragment = singbox_settings.record_fragment == "1" or nil })
 					if outboundTag then
+						if fork_optimize then
+							ut_outbound_tags[ut_node_id] = outboundTag
+						end
 						valid_nodes[#valid_nodes + 1] = outboundTag
+					elseif fork_optimize then
+						ut_outbound_tags[ut_node_id] = false
 					end
 				end
 			end
@@ -1459,6 +1492,9 @@ function gen_config(var)
 				idle_timeout = (api.format_go_time(_node.urltest_idle_timeout) ~= "0s") and api.format_go_time(_node.urltest_idle_timeout) or "30m",
 				interrupt_exist_connections = (_node.urltest_interrupt_exist_connections == "true" or _node.urltest_interrupt_exist_connections == "1") and true or false
 			}
+			if fork_optimize then
+				urltest_outbounds[urltest_tag] = outbound
+			end
 			return outbound
 		end
 
@@ -2396,9 +2432,14 @@ function gen_config(var)
 			tag = "direct",
 			routing_mark = 255,
 		})
+		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and (value.server_port or value.server_ports) and not NO_RUN then
-				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				if fork_optimize then
+					direct_node_ids[#direct_node_ids + 1] = value["_id"]
+				else
+					sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				end
 			end
 			if not value.detour and not value.bind_interface and value.server then
 				value.detour = "direct"
@@ -2410,6 +2451,13 @@ function gen_config(var)
 				if k:find("_") == 1 then
 					config.outbounds[index][k] = nil
 				end
+			end
+		end
+		if fork_optimize and direct_node_ids and #direct_node_ids > 0 then
+			local f = io.open(api.TMP_PATH .. "/direct_node_list", "a")
+			if f then
+				f:write(table.concat(direct_node_ids, "\n") .. "\n")
+				f:close()
 			end
 		end
 		if true then
@@ -2458,6 +2506,9 @@ function gen_config(var)
 end
 
 function gen_proto_config(var)
+	local log = var["log"] or "0"
+	local loglevel = var["loglevel"] or "warn"
+	local logfile = var["logfile"] or "/dev/null"
 	local local_socks_address = var["local_socks_address"] or "0.0.0.0"
 	local local_socks_port = var["local_socks_port"]
 	local local_socks_username = var["local_socks_username"]
@@ -2524,9 +2575,10 @@ function gen_proto_config(var)
 
 	local config = {
 		log = {
-			disabled = true,
-			level = "warn",
+			disabled = log == "0" and true or false,
+			level = get_log_level(loglevel),
 			timestamp = true,
+			output = logfile ~= "/dev/null" and logfile or nil,
 		},
 		-- 传入连接
 		inbounds = inbounds,
@@ -2540,7 +2592,7 @@ _G.gen_config = gen_config
 _G.gen_proto_config = gen_proto_config
 _G.geo_convert_srs = geo_convert_srs
 
-if arg[1] then
+if arg and arg[1] then
 	local func =_G[arg[1]]
 	if func then
 		local var = nil
