@@ -137,9 +137,12 @@ get_geoip() {
 	local geoip_code="$1"
 	local geoip_type_flag=""
 	local output_path="${geo_output_path}/geoip-${geoip_code}-$2"
-	[ ! -s "${output_path}" ] && {
-		local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"
-		geoip_path="${geoip_path%*/}/geoip.dat"
+	local geoip_path="$(config_n_get @global_rules[0] v2ray_location_asset)"
+	geoip_path="${geoip_path%*/}/geoip.dat"
+	local need_gen=0
+	[ ! -s "${output_path}" ] && need_gen=1
+	[ -s "$geoip_path" ] && [ -s "${output_path}" ] && [ "$geoip_path" -nt "${output_path}" ] && need_gen=1
+	[ "$need_gen" = "1" ] && {
 		local bin="$(first_type $(config_n_get @global_app[0] geoview_file) geoview)"
 		[ -n "$bin" ] && [ -s "$geoip_path" ] || { echo ""; return; }
 		case "$2" in
@@ -484,8 +487,30 @@ ln_run() {
 		return 1
 	}
 
-	"$file_func" "$@" >"$output" 2>&1 &
-	local pid=$!
+	local pid
+	[ "${output}" != "/dev/null" ] && [ -n "$(echo "${output}" | grep -E "default|socks_")" ] && [ "${ln_name}" != "chinadns-ng" ] && {
+		local persist_log_path=$(config_n_get @global[0] persist_log_path)
+		local sys_log=$(config_n_get @global[0] sys_log "0")
+	}
+	if [ -z "$persist_log_path" ] && [ "$sys_log" != "1" ]; then
+		"$file_func" "$@" >"$output" 2>&1 &
+		pid=$!
+	else
+		if [ -n "${persist_log_path}" ]; then
+			mkdir -p ${persist_log_path}
+			local log_file=${persist_log_path}/passwall_global_${ln_name}_$(date '+%F').log
+			echolog "记录到持久性日志文件：${log_file}"
+			"$file_func" "$@" >> ${log_file} 2>&1 &
+			pid=$!
+			output=${log_file}
+			sys_log=0
+		fi
+		if [ "${sys_log}" = "1" ]; then
+			echolog "记录 ${ln_name}_global 到系统日志"
+			"$file_func" "$@" 2>&1 | logger -t PASSWALL_global_${ln_name} &
+			pid=$!
+		fi
+	fi
 
 	[ "$NO_REC_PROCESS" = "1" ] && return
 	local process_file=$(mktemp "$TMP_SCRIPT_FUNC_PATH/XXXXXX")
