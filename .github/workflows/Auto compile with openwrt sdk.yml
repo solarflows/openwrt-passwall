@@ -12,6 +12,37 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      prerelease:
+        description: 'Publish as Pre-release'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Custom tag name override'
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      target_ref:
+        description: 'Target ref or branch to compile'
+        required: false
+        type: string
+        default: ''
+      prerelease:
+        description: 'Publish as Pre-release'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Custom tag name override'
+        required: false
+        type: string
+        default: ''
+      force_compile:
+        description: 'Force compile even if tag already exists'
+        required: false
+        type: boolean
+        default: false
 env:
   TZ: Asia/Shanghai
   passwall: ${{ github.repository }}
@@ -35,18 +66,38 @@ jobs:
         uses: actions/checkout@main
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ inputs.target_ref || github.ref_name }}
 
       - name: Check version
         id: check_version
         env:
           url_tags: https://api.github.com/repos/${{ env.passwall }}/releases/latest
         run: |
-          cd luci-app-passwall
-          latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
+          target_ref="${{ inputs.target_ref || github.ref_name }}"
+          custom_tag="${{ inputs.tag_name }}"
+          force_compile="${{ inputs.force_compile }}"
+
+          if [ -n "$custom_tag" ]; then
+            latest_version="$custom_tag"
+          else
+            cd luci-app-passwall
+            latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
+            if [ "$target_ref" = "rolling" ]; then
+              latest_version="${latest_version}-rolling.$(date +%Y%m%d%H%M)"
+            fi
+            cd ..
+          fi
           echo "latest_version=${latest_version}" >> $GITHUB_OUTPUT
 
-          prerelease=$([ "${{ github.ref_name }}" == "main" ] || [ "${{ github.ref_name }}" == "custom" ] && echo false || echo true)
+          if [ -n "${{ inputs.prerelease }}" ]; then
+            prerelease="${{ inputs.prerelease }}"
+          elif [ "$target_ref" = "rolling" ]; then
+            prerelease=true
+          elif [ "$target_ref" = "main" ] || [ "$target_ref" = "custom" ]; then
+            prerelease=false
+          else
+            prerelease=true
+          fi
           echo "prerelease=${prerelease}" >> $GITHUB_OUTPUT
 
           remote_latest_version=$(wget -qO- -t1 -T2 ${{env.url_tags}} | jq -r '.tag_name')
@@ -59,7 +110,10 @@ jobs:
           echo "Remote latest: $remote_latest_version"
           echo "previous_version=${remote_latest_version}" >> $GITHUB_OUTPUT
 
-          if [ "$latest_version" = "$remote_latest_version" ]; then
+          if [ "$force_compile" = "true" ]; then
+            echo "Force compile enabled"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          elif [ "$latest_version" = "$remote_latest_version" ]; then
             echo "has_update=false" >> $GITHUB_OUTPUT
           else
             echo "has_update=true" >> $GITHUB_OUTPUT
@@ -71,6 +125,13 @@ jobs:
           git fetch --tags --force 2>/dev/null || true
           latest_ver="${{ steps.check_version.outputs.latest_version }}"
           prev_ver="${{ steps.check_version.outputs.previous_version }}"
+          target_ref="${{ inputs.target_ref || github.ref_name }}"
+
+          if [ "$target_ref" = "rolling" ]; then
+            branch_info="> 📌 **源码分支**：[\`rolling\`](https://github.com/${{ env.passwall }}/tree/rolling)（前沿滚动置顶分支，先行 Pre-release 体验版）"
+          else
+            branch_info="> 📌 **源码分支**：[\`custom\`](https://github.com/${{ env.passwall }}/tree/custom) / [\`main\`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 \`upstream\` 同步构建）"
+          fi
 
           changelog=""
           compare_link=""
@@ -87,7 +148,7 @@ jobs:
           cat << EOF > release.txt
           ![](https://img.shields.io/github/downloads/${{ env.passwall }}/${latest_ver}/total?style=flat-square)
 
-          > 📌 **源码分支**：[\`custom\`](https://github.com/${{ env.passwall }}/tree/custom) / [\`main\`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 \`upstream\` 同步变基构建）
+          ${branch_info}
           ${compare_link}
 
           ### 📝 本次更新日志 (${prev_ver:-init} -> ${latest_ver})
@@ -175,7 +236,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{steps.check_version.outputs.latest_version}}
-          target_commitish: ${{ github.ref_name }}
+          target_commitish: ${{ inputs.target_ref || github.ref_name }}
           prerelease: ${{steps.check_version.outputs.prerelease}}
           body_path: release.txt
 
@@ -200,6 +261,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@main
+        with:
+          ref: ${{ inputs.target_ref || github.ref_name }}
 
       - name: Generate .config for Language Packs
         run: |
