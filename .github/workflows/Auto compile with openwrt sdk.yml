@@ -12,6 +12,47 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+      prerelease:
+        description: 'Publish as Pre-release'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Custom tag name override'
+        required: false
+        type: string
+      target_ref:
+        description: 'Target ref or branch to compile'
+        required: false
+        type: string
+        default: ''
+      force_compile:
+        description: 'Force compile even if tag already exists'
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      target_ref:
+        description: 'Target ref or branch to compile'
+        required: false
+        type: string
+        default: ''
+      prerelease:
+        description: 'Publish as Pre-release'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Custom tag name override'
+        required: false
+        type: string
+        default: ''
+      force_compile:
+        description: 'Force compile even if tag already exists'
+        required: false
+        type: boolean
+        default: false
 env:
   TZ: Asia/Shanghai
   passwall: ${{ github.repository }}
@@ -27,6 +68,7 @@ jobs:
     runs-on: ubuntu-26.04
     outputs:
       passwall_version: ${{ steps.check_version.outputs.latest_version }}
+      previous_version: ${{ steps.check_version.outputs.previous_version }}
       has_update: ${{ steps.check_version.outputs.has_update }}
       prerelease: ${{ steps.check_version.outputs.prerelease }}
     steps:
@@ -34,18 +76,38 @@ jobs:
         uses: actions/checkout@main
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ inputs.target_ref || github.ref_name }}
 
       - name: Check version
         id: check_version
         env:
           url_tags: https://api.github.com/repos/${{ env.passwall }}/releases/latest
         run: |
-          cd luci-app-passwall
-          latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
+          target_ref="${{ inputs.target_ref || github.ref_name }}"
+          custom_tag="${{ inputs.tag_name }}"
+          force_compile="${{ inputs.force_compile }}"
+
+          if [ -n "$custom_tag" ]; then
+            latest_version="$custom_tag"
+          else
+            cd luci-app-passwall
+            latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
+            if [ "$target_ref" = "rolling" ]; then
+              latest_version="${latest_version}-rolling.$(date +%Y%m%d%H%M)"
+            fi
+            cd ..
+          fi
           echo "latest_version=${latest_version}" >> $GITHUB_OUTPUT
 
-          prerelease=$([ "${{ github.ref_name }}" == "main" ] && echo false || echo true)
+          if [ -n "${{ inputs.prerelease }}" ]; then
+            prerelease="${{ inputs.prerelease }}"
+          elif [ "$target_ref" = "rolling" ]; then
+            prerelease=true
+          elif [ "$target_ref" = "main" ] || [ "$target_ref" = "custom" ]; then
+            prerelease=false
+          else
+            prerelease=true
+          fi
           echo "prerelease=${prerelease}" >> $GITHUB_OUTPUT
 
           remote_latest_version=$(wget -qO- -t1 -T2 ${{env.url_tags}} | jq -r '.tag_name')
@@ -56,8 +118,12 @@ jobs:
             exit 0
           fi
           echo "Remote latest: $remote_latest_version"
+          echo "previous_version=${remote_latest_version}" >> $GITHUB_OUTPUT
 
-          if [ "$latest_version" = "$remote_latest_version" ]; then
+          if [ "$force_compile" = "true" ]; then
+            echo "Force compile enabled"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          elif [ "$latest_version" = "$remote_latest_version" ]; then
             echo "has_update=false" >> $GITHUB_OUTPUT
           else
             echo "has_update=true" >> $GITHUB_OUTPUT
@@ -66,45 +132,111 @@ jobs:
       - name: Prepare release
         if: steps.check_version.outputs.has_update == 'true'
         run: |
-          echo "![](https://img.shields.io/github/downloads/${{ env.passwall }}/${{steps.check_version.outputs.latest_version}}/total?style=flat-square)" >> release.txt
-          echo "## :mega: 获取其他软件包 / How to Get Other Packages" >>release.txt
-          echo "" >>release.txt
-          echo "### 方式 1：添加软件源 / Method 1: Add Software Source" >>release.txt
-          echo " * 请按照 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 仓库的说明，将其提供的软件源添加到设备中，然后直接使用包管理器安装。" >>release.txt
-          echo "  Follow the instructions in the [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) repository to add the provided software source to your device, then install directly using the package manager." >>release.txt
-          echo "" >>release.txt
-          echo "### 方式 2：手动下载并安装 / Method 2: Manual Download and Install" >>release.txt
-          echo "" >>release.txt
-          echo "* 从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 下载预构建的软件包。" >>release.txt
-          echo "  Download prebuilt packages from [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/)." >>release.txt
-          echo "" >>release.txt
-          echo "* 将文件上传到您的设备，使用 Shell 命令进行安装。" >>release.txt
-          echo "  Upload files to your device, install it with shell command." >>release.txt
-          echo "" >>release.txt
-          echo "ipk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "opkg install /path/to/package.ipk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "apk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "apk add --allow-untrusted /path/to/package.apk" >>release.txt
-          echo "\`\`\`" >>release.txt
-          echo "" >>release.txt
-          echo ":warning: 请将 /path/to/package 替换为实际下载的软件包路径。" >>release.txt
-          echo "- Replace /path/to/package with the actual path of the downloaded packages." >>release.txt
-          echo "" >>release.txt
-          echo "---" >>release.txt
-          echo "## :rocket: 配套固件与工具 / Firmwares & Tools" >>release.txt
-          echo "" >>release.txt
-          echo "### :fire: [OpenWrtAction](https://github.com/smallprogram/OpenWrtAction) —— 集成 Passwall 的 CI 固件 / Ready-to-use firmware with Passwall" >>release.txt
-          echo "* 集成官方 OpenWrt 25.12、ImmortalWrt 25.12、Lean (Snapshot) 固件，支持 x86、R2S、R2C、R4S、R5S、R5C、H66K、H68K、H69K、R66S、R68S 等设备，刷入即用。" >>release.txt
-          echo "  Firmware built on official OpenWrt 25.12, ImmortalWrt 25.12 and Lean (Snapshot), supporting x86, R2S, R2C, R4S, R5S, R5C, H66K, H68K, H69K, R66S, R68S and more." >>release.txt
-          echo "* 支持 GitHub 一键更新：直接从 GitHub Releases 在线升级固件，无需手动下载和刷写。" >>release.txt
-          echo "  Supports one-click GitHub update: upgrade the firmware online straight from GitHub Releases, no manual download or flashing needed." >>release.txt
-          echo "" >>release.txt
-          echo "### :package: [Are-u-ok](https://github.com/bcseputetto/Are-u-ok) —— iStoreOS .run 更新包 / iStoreOS .run update packages" >>release.txt
-          echo "* 为 iStoreOS 提供 .run 格式更新包，无需重刷固件，上传执行即可安装/升级。" >>release.txt
-          echo "  Provides .run update packages for iStoreOS — no reflashing needed, just upload and run." >>release.txt
+          git fetch --tags --force 2>/dev/null || true
+          latest_ver="${{ steps.check_version.outputs.latest_version }}"
+          prev_ver="${{ steps.check_version.outputs.previous_version }}"
+          target_ref="${{ inputs.target_ref || github.ref_name }}"
+
+          if [ "$target_ref" = "rolling" ]; then
+            branch_info="> 📌 **源码分支**：[\`rolling\`](https://github.com/${{ env.passwall }}/tree/rolling)（前沿滚动置顶分支，先行 Pre-release 体验版）"
+          else
+            branch_info="> 📌 **源码分支**：[\`custom\`](https://github.com/${{ env.passwall }}/tree/custom) / [\`main\`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 \`upstream\` 同步构建）"
+          fi
+
+          changelog=""
+          compare_link=""
+          if [ -n "$prev_ver" ] && git rev-parse -q --verify "refs/tags/${prev_ver}" >/dev/null 2>&1; then
+            changelog=$(git log --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" "${prev_ver}..HEAD")
+            compare_url="https://github.com/${{ env.passwall }}/compare/${prev_ver}...${latest_ver}"
+            compare_link="> 🔍 **完整变更对比**：[${prev_ver} ... ${latest_ver}](${compare_url})"
+          fi
+
+          if [ -z "$changelog" ]; then
+            changelog=$(git log -n 10 --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" HEAD)
+          fi
+
+          cat << EOF > release.txt
+          ![](https://img.shields.io/github/downloads/${{ env.passwall }}/${latest_ver}/total?style=flat-square)
+
+          ${branch_info}
+          ${compare_link}
+
+          ### 📝 本次更新日志 (${prev_ver:-init} -> ${latest_ver})
+
+          EOF
+
+          printf "%s\n\n" "$changelog" >> release.txt
+
+          cat << 'EOF' >> release.txt
+          ---
+
+          ### 📌 核心功能与架构特性
+
+          本仓库基于官方 PassWall 最新版本构建，保留官方原有功能，主要包含以下调整：
+          * **SmartDNS 双模式架构**：
+            * **系统共享/单进程优化 (`smartdns-shared`)**：复用宿主系统 SmartDNS 单进程，共享国内 warm 缓存池，`:15355` 直连承载跳过 dnsmasq 中间层；`:15354@lo` 独占纯净 Anycast DoH（阿里+字节）专属节点直连组（`passwall_vps`），控制面与数据面物理隔离。
+            * **独立守护进程 (`smartdns`)**：100% 保持官方上游独立子进程原生逻辑（0 diff、0 hook），内置独立 WebUI 与日志。
+          * **特权优先自定义代理集合 (`custom_proxy`)**：在 ACL 判定前置位插入针对 `psw_custom` 集合的直通引流，局域网直连设备无感代理特定服务。
+          * **订阅与节点处理**：基于物理连接拓扑提取纯净哈希指纹，解耦动态流量/到期备注，脏检查零 Flash 磨损与 0 断网刷新。
+          * **分流模式缓存双锁死**：前端锁死隐藏缓存模式，后端强制注入 `-no-cache` 与 `-no-serve-expired`，保障 URLTest 动态测速瞬间生效。
+          * **防火墙与转发**：出站链增加 `PSW_FAST_RETURN` 短路规则，调整 `rp_filter` 参数以减少出站开销。
+
+          ---
+
+          ### 📦 安装包选择
+
+          请根据您的系统固件版本下载对应的安装包（主程序 + 中文包）：
+
+          | 固件系统版本 | 适用环境 | 主程序包 | 界面语言包 |
+          | :--- | :--- | :--- | :--- |
+          | **OpenWrt 25.12+** | 采用 apk 包管理的新架构固件 | `25.12+_luci-app-passwall-*.apk` | `25.12+_luci-i18n-passwall-zh-cn-*.apk` |
+          | **OpenWrt 23.05 ~ 24.10** | 主流正式版 / ImmortalWrt 23/24（opkg） | `23.05-24.10_luci-app-passwall_*.ipk` | `23.05-24.10_luci-i18n-passwall-zh-cn_*.ipk` |
+          | **OpenWrt 22.03 及旧版** | 22.03 / 21.02 等旧版（opkg） | `22.03-_luci-app-passwall_*.ipk` | `22.03-_luci-i18n-passwall-zh-cn_*.ipk` |
+
+          ---
+
+          ### 🔑 导入签名公钥
+
+          安装包已使用独立密钥签名。如需验证签名，可在安装前将公钥导入设备：
+
+          #### 1. IPK (OpenWrt 24.10 及更早版本)
+          公钥文件：`solarflows-usign-public.pub`
+
+          * **在线下载导入**（路由器终端执行）：
+            ```sh
+            curl -sSL -k "https://github.com/${{ env.passwall }}/releases/latest/download/solarflows-usign-public.pub" -o /etc/opkg/keys/solarflows.pub
+            ```
+          * **安装命令**：
+            ```sh
+            opkg install luci-app-passwall_*.ipk luci-i18n-passwall-zh-cn_*.ipk
+            ```
+
+          #### 2. APK (OpenWrt 25.12+ 新架构)
+          公钥文件：`solarflows-apk-public.pem`
+
+          * **在线下载导入**（路由器终端执行）：
+            ```sh
+            mkdir -p /etc/apk/keys
+            curl -sSL -k "https://github.com/${{ env.passwall }}/releases/latest/download/solarflows-apk-public.pem" -o /etc/apk/keys/solarflows.pem
+            ```
+          * **安装命令**：
+            ```sh
+            apk add luci-app-passwall-*.apk luci-i18n-passwall-zh-cn-*.apk
+            # 若未导入公钥，可临时允许未信任安装：
+            # apk add --allow-untrusted luci-app-passwall-*.apk luci-i18n-passwall-zh-cn-*.apk
+            ```
+
+          ---
+
+          ### 💡 依赖说明
+          PassWall 运行所需内核组件（如 Sing-Box、Xray、ChinaDNS-NG 等），可参考 [openwrt-passwall-build](https://github.com/moetayuko/openwrt-passwall-build) 软件源或从 [SourceForge](https://sourceforge.net/projects/openwrt-passwall-build/files/) 获取预编译包。
+
+          ---
+
+          ### 🚀 配套固件与工具 / Firmwares & Tools
+          * **[OpenWrtAction](https://github.com/smallprogram/OpenWrtAction)** —— 集成 PassWall 的 CI 固件，支持 x86、R2S、R4S、R5S、H68K 等，支持 GitHub 一键在线更新固件。
+          * **[Are-u-ok](https://github.com/bcseputetto/Are-u-ok)** —— iStoreOS .run 更新包，上传执行即可直接安装/升级。
+          EOF
           touch release.txt
 
       - name: Generate new tag & release
@@ -114,7 +246,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{steps.check_version.outputs.latest_version}}
-          target_commitish: ${{ github.ref_name }}
+          target_commitish: ${{ inputs.target_ref || github.ref_name }}
           prerelease: ${{steps.check_version.outputs.prerelease}}
           body_path: release.txt
 
@@ -139,6 +271,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@main
+        with:
+          ref: ${{ inputs.target_ref || github.ref_name }}
 
       - name: Generate .config for Language Packs
         run: |
@@ -154,21 +288,44 @@ jobs:
         env:
           ARCH: ${{ matrix.container_tag }}
           PACKAGES: luci-app-passwall
+          INDEX: 1
+          KEY_BUILD: ${{ secrets.USIGN_KEY }}
+          PRIVATE_KEY: ${{ secrets.APK_BUILD_KEY }}
           # V: s
 
       - name: Process and Rename Artifacts
         id: compile
         run: |
           mkdir -p ${{ github.workspace }}/upload
-          
+
           # 使用 find 安全提取生成的 ipk/apk 及语言包
           find bin/packages/ -type f -name "luci-app-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
           find bin/packages/ -type f -name "luci-i18n-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
-          
+
           cd ${{ github.workspace }}/upload
-          
+
           for i in $(ls); do mv $i ${{ matrix.ver }}_$i; done
-          
+
+          # 导出签名公钥文件并随 release 一同发布
+          if [ "${{ matrix.ver }}" = "25.12+" ] && [ -n "${{ secrets.APK_BUILD_KEY }}" ]; then
+            printf '%s' "${{ secrets.APK_BUILD_KEY }}" > /tmp/apk-sec.pem
+            openssl ec -in /tmp/apk-sec.pem -pubout -out ${{ github.workspace }}/upload/solarflows-apk-public.pem 2>/dev/null || true
+            rm -f /tmp/apk-sec.pem
+          elif [ "${{ matrix.ver }}" != "25.12+" ] && [ -n "${{ secrets.USIGN_KEY }}" ]; then
+            printf '%s\n' "${{ secrets.USIGN_KEY }}" > /tmp/key-build
+            KEY_B64=$(grep -v '^untrusted comment:' /tmp/key-build | tr -d '\n')
+            printf '%s' "$KEY_B64" | base64 -d > /tmp/.seckey.bin 2>/dev/null || true
+            if [ "$(wc -c < /tmp/.seckey.bin 2>/dev/null)" = "104" ]; then
+              FP=$(dd if=/tmp/.seckey.bin bs=1 skip=32 count=8 2>/dev/null | od -An -tx8 | tr -d ' \n')
+              {
+                printf 'untrusted comment: public key %s\n' "$FP"
+                { printf 'Ed'; dd if=/tmp/.seckey.bin bs=1 skip=32 count=8 2>/dev/null; dd if=/tmp/.seckey.bin bs=1 skip=72 count=32 2>/dev/null; } | base64 -w 0
+                printf '\n'
+              } > ${{ github.workspace }}/upload/solarflows-usign-public.pub
+            fi
+            rm -f /tmp/key-build /tmp/.seckey.bin
+          fi
+
           echo "status=success" >> $GITHUB_OUTPUT
       - name: Upload to release
         uses: softprops/action-gh-release@v3
@@ -182,7 +339,7 @@ jobs:
   job_trigger_packages:
     name: Trigger packages cache workflow
     needs: [job_check, job_build_passwall]
-    if: needs.job_check.outputs.has_update == 'true' && needs.job_build_passwall.result == 'success'
+    if: needs.job_check.outputs.has_update == 'true' && needs.job_build_passwall.result == 'success' && github.repository == 'Openwrt-Passwall/openwrt-passwall'
     runs-on: ubuntu-26.04
     steps:
       - name: Trigger Auto Cache Software Release JSONs
