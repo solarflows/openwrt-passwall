@@ -14,6 +14,25 @@ local xray_version = api.get_app_version("xray")
 
 local xray_min_version = "26.7.11"
 
+local _geosite_has_gfw = nil
+local function check_geosite_gfw(bin, geo_file)
+	if _geosite_has_gfw ~= nil then return _geosite_has_gfw end
+	local cache_file = api.CACHE_PATH .. "/geosite_has_gfw"
+	local dat_stat = fs.stat(geo_file)
+	local c_stat = fs.stat(cache_file)
+	if c_stat and dat_stat and c_stat.mtime and dat_stat.mtime and c_stat.mtime >= dat_stat.mtime then
+		local content = fs.readfile(cache_file)
+		if content and content ~= "" then
+			_geosite_has_gfw = (content == "1")
+			return _geosite_has_gfw
+		end
+	end
+	local has_gfw = (luci.sys.call('"' .. bin .. '" -type geosite -input "' .. geo_file .. '" | grep -q "^GFW$"') == 0)
+	_geosite_has_gfw = has_gfw
+	fs.writefile(cache_file, has_gfw and "1" or "0")
+	return _geosite_has_gfw
+end
+
 local function get_domain_excluded()
 	local path = string.format("/etc/%s/rules/domains_excluded", api.c_config)
 	local content = fs.readfile(path)
@@ -980,6 +999,8 @@ function gen_config(var)
 	local inbounds = {}
 	local outbounds = {}
 	local COMMON = {}
+	local fragment_table, noise_table = nil, nil
+	local inner_fakedns = "0"
 
 	local xray_settings = api.uci_get_c("@global_xray[0]") or {}
 
@@ -1484,7 +1505,7 @@ function gen_config(var)
 				if bin then
 					local geo_file = (api.uci_get_c("@global_rules[0]", "v2ray_location_asset") or "/usr/share/v2ray/"):match("^(.*)/") .. "/geosite.dat"
 					local gfw_rule
-					if sys.call('"' .. bin .. '" -type geosite -input "' .. geo_file .. '" 2>/dev/null | grep -q "^GFW$"') == 0 then
+					if check_geosite_gfw(bin, geo_file) then
 						gfw_rule = "geosite:gfw"
 					elseif api.compare_versions(api.get_app_version("geoview"), ">=", "0.2.8") then
 						local output = api.CACHE_PATH .. "/geodata/gfwlist.dat"
@@ -2136,11 +2157,17 @@ function gen_config(var)
 		else
 			table.insert(outbounds, blackhole_outbound)
 		end
+		local fork_optimize = ((api.uci_get_c("@global_optimize[0]", "fork_optimize") or api.uci_get_c("@global_forwarding[0]", "fork_optimize") or "1") == "1")
+		local direct_node_ids = fork_optimize and {} or nil
 		for index, value in ipairs(config.outbounds) do
 			local pt = value.protocol
 			local exclude = { blackhole=1, dns=1, freedom=1, loopback=1 }
 			if not value["_flag_proxy_tag"] and value["_id"] and pt and not exclude[pt] and not NO_RUN then
-				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				if fork_optimize then
+					direct_node_ids[#direct_node_ids + 1] = value["_id"]
+				else
+					sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+				end
 			end
 			for k, v in pairs(config.outbounds[index]) do
 				if k:find("_") == 1 then
@@ -2148,11 +2175,20 @@ function gen_config(var)
 				end
 			end
 		end
+		if fork_optimize and direct_node_ids and #direct_node_ids > 0 then
+			local f = io.open(api.TMP_PATH .. "/direct_node_list", "a")
+			if f then
+				f:write(table.concat(direct_node_ids, "\n") .. "\n")
+				f:close()
+			end
+		end
 		return jsonc.stringify(config, 1)
 	end
 end
 
 function gen_proto_config(var)
+	local log = var["log"] or "0"
+	local loglevel = var["loglevel"] or "warning"
 	local local_socks_address = var["local_socks_address"] or "0.0.0.0"
 	local local_socks_port = var["local_socks_port"]
 	local local_socks_username = var["local_socks_username"]
@@ -2252,7 +2288,7 @@ function gen_proto_config(var)
 
 	local config = {
 		log = {
-			loglevel = "warning"
+			loglevel = (log == "1") and get_log_level(loglevel) or "warning"
 		},
 		-- 传入连接
 		inbounds = inbounds,
@@ -2270,7 +2306,7 @@ end
 _G.gen_config = gen_config
 _G.gen_proto_config = gen_proto_config
 
-if arg[1] then
+if arg and arg[1] then
 	local func =_G[arg[1]]
 	if func then
 		local var = nil
