@@ -102,6 +102,8 @@ function index()
 	entry({"admin", "services", appname, "add_shunt_rule"}, call("add_shunt_rule")).leaf = true
 	entry({"admin", "services", appname, "delete_select_shunt_rules"}, call("delete_select_shunt_rules")).leaf = true
 
+	-- 新增IP信息查询路由
+	entry({"admin", "services", appname, "ip_info"}, call("ip_info")).leaf = true
 	--[[rule_list]]
 	entry({"admin", "services", appname, "read_rulelist"}, call("read_rulelist")).leaf = true
 
@@ -344,6 +346,8 @@ function index_status()
 	if dns_shunt == "smartdns" then
 		local config_file = api.TMP_PATH .. "/acl/default/smartdns.conf"
 		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep -F %s | grep 'smartdns' >/dev/null" % util.shellquote(config_file)) == 0
+	elseif dns_shunt == "smartdns-shared" then
+		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep 'smartdns' >/dev/null") == 0
 	elseif dns_shunt == "chinadns-ng" then
 		e.dns_mode_status = luci.sys.call("/bin/busybox top -bn1 | grep -v 'grep' | grep '%s/bin/' | grep 'default' | grep 'chinadns_ng' >/dev/null" % api.TMP_PATH) == 0
 	else
@@ -428,6 +432,37 @@ function connect_status()
 		e.handshake_time = string.format("%.2f", pretransfer * 1000)
 		e.ping_type = "curl"
 	end
+	http_write_json(e)
+end
+
+-- IP信息查询接口
+function ip_info()
+	local e = {}
+	local args = {
+		"-skfL",
+		"--connect-timeout 3",
+		"--max-time 10",
+		"-H 'Accept: application/json'",
+		"-A 'passwall-ip-check'"
+	}
+	local return_code, result = api.curl_auto("https://ip.api.skk.moe/cf-geoip", nil, args)
+
+	if return_code ~= 0 or not result or result == "" then
+		e.error = "Network request failed"
+	else
+		local ok, data = pcall(jsonParse, result)
+		if not ok or type(data) ~= "table" or not data.ip or not data.country then
+			e.error = "Invalid API response"
+		else
+			e.ip = data.ip
+			e.country = data.country
+			e.city = data.city or ""
+			e.region = data.region or ""
+			e.asn = data.asn
+			e.asOrg = data.asOrg
+		end
+	end
+
 	http_write_json(e)
 end
 
@@ -528,7 +563,7 @@ function set_node()
 		if node_protocol == "_shunt" then
 			local node_type = uci_get(section, "type")
 			local dns_shunt = uci_get(type, "dns_shunt")
-			local dns_key = (dns_shunt == "smartdns") and "smartdns_dns_mode" or "dns_mode"
+			local dns_key = (dns_shunt == "smartdns" or dns_shunt == "smartdns-shared") and "smartdns_dns_mode" or "dns_mode"
 			local dns_mode = uci_get(type, dns_key)
 			local new_dns_mode = (node_type == "Xray") and "xray" or "sing-box"
 			if dns_mode ~= new_dns_mode then
@@ -690,6 +725,7 @@ function get_node()
 	local id = http.formvalue("id")
 	local result = {}
 	local show_node_info = uci_get("@global_other[0]", "show_node_info") or "0"
+	local fork_optimize = ((uci_get("@global_optimize[0]", "fork_optimize") or uci_get("@global_forwarding[0]", "fork_optimize") or "1") == "1")
 
 	local function add_is_ipv6_key(o)
 		if o and o.address and show_node_info == "1" then
@@ -707,14 +743,26 @@ function get_node()
 	else
 		local default_nodes = {}
 		local other_nodes = {}
-		uci_foreach("nodes", function(t)
-			add_is_ipv6_key(t)
-			if not t.group or t.group == "" then
-				default_nodes[#default_nodes + 1] = t
-			else
-				other_nodes[#other_nodes + 1] = t
-			end
-		end)
+		if fork_optimize then
+			local native_uci = require("uci").cursor()
+			native_uci:foreach("passwall", "nodes", function(t)
+				add_is_ipv6_key(t)
+				if not t.group or t.group == "" then
+					default_nodes[#default_nodes + 1] = t
+				else
+					other_nodes[#other_nodes + 1] = t
+				end
+			end)
+		else
+			uci_foreach("nodes", function(t)
+				add_is_ipv6_key(t)
+				if not t.group or t.group == "" then
+					default_nodes[#default_nodes + 1] = t
+				else
+					other_nodes[#other_nodes + 1] = t
+				end
+			end)
+		end
 		for i = 1, #default_nodes do result[#result + 1] = default_nodes[i] end
 		for i = 1, #other_nodes do result[#result + 1] = other_nodes[i] end
 	end
