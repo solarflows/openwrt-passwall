@@ -1577,11 +1577,6 @@ function to_move(app_name,file)
 		}
 	end
 
-	local flag = sys.call('busybox pgrep -af "passwall/.*'.. app_name ..'" >/dev/null')
-	if flag == 0 then
-		sys.call("/etc/init.d/passwall stop")
-	end
-
 	local old_app_size = 0
 	if fs.access(app_path) then
 		old_app_size = get_file_space(app_path)
@@ -1595,6 +1590,11 @@ function to_move(app_name,file)
 			remove(rm_tmp)
 			return {code = 1, error = i18n.translatef("%s not enough space.", final_dir)}
 		end
+	end
+
+	local flag = sys.call('busybox pgrep -af "passwall/.*'.. app_name ..'" >/dev/null')
+	if flag == 0 then
+		sys.call("/etc/init.d/passwall stop")
 	end
 
 	result = exec("/bin/mv", { "-f", bin_path, app_path }, nil, command_timeout) == 0
