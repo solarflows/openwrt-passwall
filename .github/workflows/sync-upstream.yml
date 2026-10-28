@@ -148,7 +148,7 @@ jobs:
 
           echo "Sync completed successfully."
           git checkout -B upstream "$UPSTREAM_SHA"
-          git push origin upstream --force-with-lease
+          git push origin upstream --force-with-lease || echo "::warning::Failed to update upstream branch"
           git push origin --tags --force 2>/dev/null || true
           git checkout main
           git push origin main --force-with-lease
