@@ -68,7 +68,7 @@ jobs:
 
           resolve_makefile() {
             [ ! -f "luci-app-passwall/Makefile" ] && return 1
-            python3 -c "import re, sys; p = 'luci-app-passwall/Makefile'; c = open(p, 'r', encoding='utf-8').read(); m_v = re.search(r'PKG_VERSION\s*:=\s*([^\n\r]+)', c); rels = [int(x) for x in re.findall(r'PKG_RELEASE\s*:=\s*(\d+)', c)]; max_rel = max(rels) if rels else 1; sys.exit(0 if m_v and open(p, 'w', encoding='utf-8').write(re.sub(r'<{7}.*?>{7}[^\n]*', f'PKG_VERSION:={m_v.group(1).strip()}\nPKG_RELEASE:={max_rel}', c, flags=re.S)) else 1)"
+            python3 -c 'import re, sys; p = "luci-app-passwall/Makefile"; c = open(p, "r", encoding="utf-8").read(); m_v = re.search(r"PKG_VERSION\s*:=\s*([^\n\r]+)", c); rels = [int(x) for x in re.findall(r"PKG_RELEASE\s*:=\s*(\d+)", c)]; max_rel = max(rels) if rels else 1; ver = m_v.group(1).strip() if m_v else "26.10.29"; c = re.sub(r"<{7}.*?>{7}[^\n]*", f"PKG_RELEASE:={max_rel}", c, flags=re.S); c = re.sub(r"PKG_NAME:=\s*([^\n\r]*)\n+(?:PKG_VERSION:=[^\n\r]+\n+)*PKG_RELEASE:=(\d+)", lambda m: f"PKG_NAME:=luci-app-passwall\nPKG_VERSION:={ver}\nPKG_RELEASE:={max_rel}", c); sys.exit(0 if open(p, "w", encoding="utf-8").write(c) else 1)'
           }
 
           if ! git merge --no-edit -m "merge: sync upstream ($SHORT_SHA)" upstream_remote/main; then
