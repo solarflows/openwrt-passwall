@@ -119,6 +119,27 @@ jobs:
               echo "Auto-resolved app.sh conflict."
             fi
 
+            # Auto-resolve luci_update.sh conflict using upstream ACL MD5 verification
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/luci_update\.sh"; then
+              git checkout --theirs "luci-app-passwall/root/usr/share/passwall/luci_update.sh"
+              git add "luci-app-passwall/root/usr/share/passwall/luci_update.sh"
+              echo "Auto-resolved luci_update.sh conflict using upstream ACL MD5 verification."
+            fi
+
+            # Auto-resolve nftables.sh conflict by preserving custom base_chain logic
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/nftables\.sh"; then
+              python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/nftables.sh'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'base_chain' in m.group(1) else (m.group(2) if 'base_chain' in m.group(2) else m.group(1)), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add "luci-app-passwall/root/usr/share/passwall/nftables.sh"
+              echo "Auto-resolved nftables.sh conflict preserving custom features."
+            fi
+
+            # Auto-resolve uci-defaults conflict preserving global_optimize initialization
+            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/etc/uci-defaults/luci-app-passwall"; then
+              python3 -c "import re, sys; p='luci-app-passwall/root/etc/uci-defaults/luci-app-passwall'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'global_optimize' in m.group(1) else (m.group(2) if 'global_optimize' in m.group(2) else m.group(1)), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
+              git add "luci-app-passwall/root/etc/uci-defaults/luci-app-passwall"
+              echo "Auto-resolved uci-defaults conflict preserving global_optimize initialization."
+            fi
+
             REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
             if [ -z "$REMAINING_CONFLICTS" ]; then
               git commit -m "merge: sync upstream ($SHORT_SHA) with auto-resolved conflicts"
