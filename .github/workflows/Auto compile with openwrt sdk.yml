@@ -71,6 +71,7 @@ jobs:
       previous_version: ${{ steps.check_version.outputs.previous_version }}
       has_update: ${{ steps.check_version.outputs.has_update }}
       prerelease: ${{ steps.check_version.outputs.prerelease }}
+      canary_version: ${{ steps.check_version.outputs.canary_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@main
@@ -87,17 +88,23 @@ jobs:
           custom_tag="${{ inputs.tag_name }}"
           force_compile="${{ inputs.force_compile }}"
 
-          if [ -n "$custom_tag" ]; then
+          canary_version=""
+          if [ "$custom_tag" = "canary" ] || [ "$target_ref" = "rolling" ]; then
+            cd luci-app-passwall
+            cur_ver=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' Makefile | tr -d ' \t\r\n')
+            canary_ts=$(date -u +%Y%m%d%H%M)
+            canary_version="${cur_ver}.${canary_ts}"
+            cd ..
+            latest_version="canary"
+          elif [ -n "$custom_tag" ]; then
             latest_version="$custom_tag"
           else
             cd luci-app-passwall
             latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
-            if [ "$target_ref" = "rolling" ]; then
-              latest_version="${latest_version}-rolling.$(date +%Y%m%d%H%M)"
-            fi
             cd ..
           fi
           echo "latest_version=${latest_version}" >> $GITHUB_OUTPUT
+          echo "canary_version=${canary_version}" >> $GITHUB_OUTPUT
 
           if [ -n "${{ inputs.prerelease }}" ]; then
             prerelease="${{ inputs.prerelease }}"
@@ -145,9 +152,10 @@ jobs:
 
           changelog=""
           compare_link=""
+          canary_ver="${{ steps.check_version.outputs.canary_version }}"
           if [ "$latest_ver" = "canary" ]; then
             changelog=$(git log -n 12 --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" HEAD)
-            compare_link="> 🔍 **频道状态**：实时重放官方上游最新提交并置顶自研特性（构建时间：$(date -u '+%Y-%m-%d %H:%M:%S UTC')）"
+            compare_link="> 🔍 **版本批次**：\`${canary_ver}\`（实时重放官方上游并置顶自研特性，构建时间：$(date -u '+%Y-%m-%d %H:%M:%S UTC')）"
           elif [ -n "$prev_ver" ] && git rev-parse -q --verify "refs/tags/${prev_ver}" >/dev/null 2>&1; then
             changelog=$(git log --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" "${prev_ver}..HEAD")
             compare_url="https://github.com/${{ env.passwall }}/compare/${prev_ver}...${latest_ver}"
@@ -249,6 +257,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{steps.check_version.outputs.latest_version}}
+          name: ${{ steps.check_version.outputs.canary_version != '' && format('PassWall Canary ({0})', steps.check_version.outputs.canary_version) || steps.check_version.outputs.latest_version }}
           target_commitish: ${{ inputs.target_ref || github.ref_name }}
           prerelease: ${{steps.check_version.outputs.prerelease}}
           body_path: release.txt
@@ -276,6 +285,15 @@ jobs:
         uses: actions/checkout@main
         with:
           ref: ${{ inputs.target_ref || github.ref_name }}
+
+      - name: Inject Canary Dynamic Version
+        if: needs.job_check.outputs.canary_version != ''
+        run: |
+          canary_ver="${{ needs.job_check.outputs.canary_version }}"
+          echo "Injecting dynamic Canary version: ${canary_ver} into Makefile..."
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${canary_ver}/" luci-app-passwall/Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" luci-app-passwall/Makefile
+          head -n 15 luci-app-passwall/Makefile
 
       - name: Generate .config for Language Packs
         run: |
