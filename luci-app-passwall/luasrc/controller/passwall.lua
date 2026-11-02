@@ -867,7 +867,8 @@ function server_clear_log()
 end
 
 function app_check()
-	local json = api.to_check_self()
+	local channel = http.formvalue("channel")
+	local json = api.to_check_self(channel)
 	http_write_json(json)
 end
 

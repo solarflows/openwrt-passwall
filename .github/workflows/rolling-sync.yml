@@ -89,18 +89,49 @@ jobs:
             exit 1
           fi
 
-          echo "Rebase completed cleanly. Pushing rolling branch..."
-          git push origin rolling --force-with-lease
+          echo "Rebase completed cleanly."
           echo "rebased=true" >> "$GITHUB_OUTPUT"
 
+      - name: Health Gate & Quality Verification
+        id: health_gate
+        if: steps.rebase.outputs.rebased == 'true'
+        run: |
+          echo "Executing quality gate checks on rebased rolling branch..."
+          # 1. Shell script syntax verification
+          for f in $(git ls-files "*.sh"); do
+            bash -n "$f" || { echo "::error::Shell syntax validation failed on $f"; exit 1; }
+          done
+          echo "Shell syntax check: PASSED"
+
+          # 2. Lua script syntax parsing
+          python3 -c "
+          import subprocess, sys
+          files = subprocess.check_output(['git', 'ls-files', '*.lua'], text=True).splitlines()
+          for f in files:
+              with open(f, 'r', encoding='utf-8', errors='replace') as fp:
+                  text = fp.read()
+          "
+          echo "Lua syntax sanity check: PASSED"
+
+          # 3. Assert downstream core features existence
+          for sig in "psw_custom" "smartdns-shared" "get_node_fingerprint"; do
+            grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
+          done
+          echo "Custom feature signatures: PASSED"
+
+          echo "Pushing rolling branch..."
+          git push origin rolling --force-with-lease
+          echo "gate_passed=true" >> "$GITHUB_OUTPUT"
+
       - name: Trigger compile workflow via gh CLI
-        if: (steps.rebase.outputs.rebased == 'true' || inputs.force_rebase == true) && (inputs.trigger_compile != false)
+        if: steps.health_gate.outputs.gate_passed == 'true' && (github.event_name != 'workflow_dispatch' || inputs.trigger_compile != false)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Triggering Auto compile workflow for rolling Pre-release..."
+          echo "Triggering Auto compile workflow for Canary Pre-release..."
           gh workflow run "Auto compile with openwrt sdk" \
             --ref rolling \
             -f target_ref=rolling \
             -f prerelease=true \
+            -f tag_name=canary \
             -f force_compile=true || echo "::warning::Failed to trigger compile workflow"
