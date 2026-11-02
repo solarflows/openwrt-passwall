@@ -137,15 +137,18 @@ jobs:
           prev_ver="${{ steps.check_version.outputs.previous_version }}"
           target_ref="${{ inputs.target_ref || github.ref_name }}"
 
-          if [ "$target_ref" = "rolling" ]; then
-            branch_info="> 📌 **源码分支**：[\`rolling\`](https://github.com/${{ env.passwall }}/tree/rolling)（前沿滚动置顶分支，先行 Pre-release 体验版）"
+          if [ "$target_ref" = "rolling" ] || [ "$latest_ver" = "canary" ]; then
+            branch_info="> 📌 **源码分支**：[\`rolling\`](https://github.com/${{ env.passwall }}/tree/rolling)（前沿滚动置顶分支，Canary 尝鲜预发布版）"
           else
             branch_info="> 📌 **源码分支**：[\`custom\`](https://github.com/${{ env.passwall }}/tree/custom) / [\`main\`](https://github.com/${{ env.passwall }}/tree/main)（基于官方上游 \`upstream\` 同步构建）"
           fi
 
           changelog=""
           compare_link=""
-          if [ -n "$prev_ver" ] && git rev-parse -q --verify "refs/tags/${prev_ver}" >/dev/null 2>&1; then
+          if [ "$latest_ver" = "canary" ]; then
+            changelog=$(git log -n 12 --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" HEAD)
+            compare_link="> 🔍 **频道状态**：实时重放官方上游最新提交并置顶自研特性（构建时间：$(date -u '+%Y-%m-%d %H:%M:%S UTC')）"
+          elif [ -n "$prev_ver" ] && git rev-parse -q --verify "refs/tags/${prev_ver}" >/dev/null 2>&1; then
             changelog=$(git log --no-merges --pretty=format:"* [\`%h\`](https://github.com/${{ env.passwall }}/commit/%H) %s" "${prev_ver}..HEAD")
             compare_url="https://github.com/${{ env.passwall }}/compare/${prev_ver}...${latest_ver}"
             compare_link="> 🔍 **完整变更对比**：[${prev_ver} ... ${latest_ver}](${compare_url})"
