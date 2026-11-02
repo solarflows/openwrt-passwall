@@ -307,6 +307,12 @@ msgstr "路由器本机代理"
 msgid "When selected, localhost can transparent proxy."
 msgstr "当勾选时，路由器本机可以透明代理。"
 
+msgid "Check Canary"
+msgstr "检查尝鲜版"
+
+msgid "Force update Canary"
+msgstr "强制更新尝鲜版"
+
 msgid "Client Proxy"
 msgstr "客户端代理"
 

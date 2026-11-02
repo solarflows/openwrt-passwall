@@ -1637,7 +1637,8 @@ function get_version()
 	return (version:gsub("%-r(%d+)$", "-%1"))
 end
 
-function to_check_self()
+function to_check_self(channel)
+	local is_canary = (channel == "canary" or channel == "prerelease")
 	local releases = get_api_json(com[appname]:get_url())
 	if type(releases) ~= "table" then
 		return {code = 1, error = i18n.translate("Get remote version info failed.")}
@@ -1663,21 +1664,24 @@ function to_check_self()
 	local release, main, i18n_package
 	for _, rel in ipairs(releases) do
 		if type(rel) == "table" and rel.tag_name and rel.assets and #rel.assets > 0 then
-			local m, i18n_pkg
-			for _, search_prefix in ipairs({prefix, ""}) do
-				for _, asset in ipairs(rel.assets or {}) do
-					local name = asset.name or ""
-					if name:find(search_prefix, 1, true) == 1 and name:sub(-#extension) == extension then
-						name = name:sub(#search_prefix + 1)
-						if not m and name:match("^luci%-app%-" .. appname .. "[_%-]%d") then m = asset end
-						if not i18n_pkg and name:match("^luci%-i18n%-" .. appname .. "%-zh%-cn[_%-]%d") then i18n_pkg = asset end
+			local rel_is_pre = (rel.prerelease == true or rel.tag_name:find("canary") ~= nil or rel.tag_name:find("rolling") ~= nil)
+			if (is_canary and rel_is_pre) or (not is_canary and not rel_is_pre) then
+				local m, i18n_pkg
+				for _, search_prefix in ipairs({prefix, ""}) do
+					for _, asset in ipairs(rel.assets or {}) do
+						local name = asset.name or ""
+						if name:find(search_prefix, 1, true) == 1 and name:sub(-#extension) == extension then
+							name = name:sub(#search_prefix + 1)
+							if not m and name:match("^luci%-app%-" .. appname .. "[_%-]%d") then m = asset end
+							if not i18n_pkg and name:match("^luci%-i18n%-" .. appname .. "%-zh%-cn[_%-]%d") then i18n_pkg = asset end
+						end
 					end
+					if m and i18n_pkg then break end
 				end
-				if m and i18n_pkg then break end
-			end
-			if m and i18n_pkg then
-				release, main, i18n_package = rel, m, i18n_pkg
-				break
+				if m and i18n_pkg then
+					release, main, i18n_package = rel, m, i18n_pkg
+					break
+				end
 			end
 		end
 	end
@@ -1686,14 +1690,22 @@ function to_check_self()
 		return {code = 1, error = i18n.translate("Get remote version info failed.")}
 	end
 	local local_version  = get_version()
-	-- Keep the release suffix (-1, -2, ...) so package revisions are compared too.
 	local remote_version = release.tag_name:gsub("^v", "")
-	local has_update = compare_versions(local_version, "<", remote_version)
+	local has_update
+	if is_canary then
+		has_update = (local_version ~= remote_version)
+		if not has_update then
+			has_update = true
+		end
+	else
+		-- Keep the release suffix (-1, -2, ...) so package revisions are compared too.
+		has_update = compare_versions(local_version, "<", remote_version)
+	end
 	cache_update_digests(appname, {main, i18n_package})
 	return {
 		code = 0, has_update = has_update, local_version = local_version,
 		remote_version = remote_version, html_url = release.html_url,
-		data = main, i18n = i18n_package
+		data = main, i18n = i18n_package, channel = channel
 	}
 end
 
