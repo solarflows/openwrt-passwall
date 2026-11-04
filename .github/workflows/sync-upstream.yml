@@ -57,6 +57,7 @@ jobs:
           fi
 
       - name: Sync main branch with upstream
+        id: sync
         if: steps.check_update.outputs.has_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,105 +67,74 @@ jobs:
           SHORT_SHA="${UPSTREAM_SHA:0:8}"
           echo "Syncing upstream ($SHORT_SHA) into main..."
 
-          resolve_makefile() {
-            [ ! -f "luci-app-passwall/Makefile" ] && return 1
-            python3 -c 'import re, sys; p = "luci-app-passwall/Makefile"; c = open(p, "r", encoding="utf-8").read(); m_v = re.search(r"PKG_VERSION\s*:=\s*([^\n\r]+)", c); rels = [int(x) for x in re.findall(r"PKG_RELEASE\s*:=\s*(\d+)", c)]; max_rel = max(rels) if rels else 1; ver = m_v.group(1).strip() if m_v else "26.10.29"; c = re.sub(r"<{7}.*?>{7}[^\n]*", f"PKG_RELEASE:={max_rel}", c, flags=re.S); c = re.sub(r"PKG_NAME:=\s*([^\n\r]*)\n+(?:PKG_VERSION:=[^\n\r]+\n+)*PKG_RELEASE:=(\d+)", lambda m: f"PKG_NAME:=luci-app-passwall\nPKG_VERSION:={ver}\nPKG_RELEASE:={max_rel}", c); sys.exit(0 if open(p, "w", encoding="utf-8").write(c) else 1)'
-          }
-
           if ! git merge --no-edit -m "merge: sync upstream ($SHORT_SHA)" upstream_remote/main; then
-            echo "::warning::Initial merge encountered conflict. Attempting automated resolution..."
+            echo "::warning::Initial merge encountered conflict. Attempting automated resolution on whitelist..."
             CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
             echo "Conflicted files: $CONFLICT_FILES"
 
-            # Auto-resolve Makefile version conflict
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/Makefile"; then
-              if resolve_makefile; then
-                echo "Auto-resolved Makefile version conflict."
-                git add luci-app-passwall/Makefile
-              fi
-            fi
-
-            # Auto-resolve downstream workflow customization conflict
+            # 仅允许合并已验证安全的非业务逻辑外围文件
             if echo "$CONFLICT_FILES" | grep -qx "\.github/workflows/Auto compile with openwrt sdk\.yml"; then
               git checkout --ours ".github/workflows/Auto compile with openwrt sdk.yml"
               git add ".github/workflows/Auto compile with openwrt sdk.yml"
               echo "Auto-resolved workflow conflict using downstream version."
             fi
 
-            # Auto-resolve status.htm IP check card anchor conflict while keeping upstream changes elsewhere
             if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/view/passwall/global/status\.htm"; then
               python3 -c "import re, sys; p='luci-app-passwall/luasrc/view/passwall/global/status.htm'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'check_ip_info' in m.group(1) else m.group(2), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
               git add luci-app-passwall/luasrc/view/passwall/global/status.htm
               echo "Auto-resolved status.htm conflict preserving check_ip_info."
             fi
 
-            # Auto-resolve translation conflict by combining entries
             if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/po/zh-cn/passwall\.po"; then
               python3 -c "import re; p='luci-app-passwall/po/zh-cn/passwall.po'; c=open(p,'r',encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1).strip() + '\n\n' + m.group(2).strip(), c, flags=re.S))"
               git add luci-app-passwall/po/zh-cn/passwall.po
               echo "Auto-resolved passwall.po translation conflict."
             fi
 
-            # Auto-resolve global.lua conflict by preserving advanced log features
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/luasrc/model/cbi/passwall/client/global\.lua"; then
-              python3 -c "import re, sys; p='luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', r'\1\n\n\2', c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
-              git add luci-app-passwall/luasrc/model/cbi/passwall/client/global.lua
-              echo "Auto-resolved global.lua conflict preserving custom features."
-            fi
-
-            # Auto-resolve app.sh smartdns-shared and custom logging conflict
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/app\.sh"; then
-              python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/app.sh'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'<{7}[^\n]*\n(.*?\b\[ \"\$\{DNS_SHUNT\}\" = \"smartdns\" \].*?\n)={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1)+('\n\t[ \"\${DNS_SHUNT}\" = \"smartdns-shared\" ] && {\n\t\tstart_smartdns_shared\n\t}\n' if 'smartdns-shared' not in m.group(1) else ''), c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\bDNS_REDIRECT_PORT=\$\{smartdns_listen_port\}.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t\tDNS_REDIRECT_PORT=${smartdns_listen_port}\n\t\tset_cache_var \"ACL_default_dns_port\" \"${DNS_REDIRECT_PORT}\"\n\telif [ \"${DNS_SHUNT}\" = \"smartdns-shared\" ]; then\n\t\tDNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}\n\t\tGLOBAL_DNSMASQ_PORT=\"\"\n', c, flags=re.S); c=re.sub(r'<{7}[^\n]*\n(.*?\brm -rf \$GLOBAL_DNSMASQ_CONF.*?\n)={7}\n(.*?)\n>{7}[^\n]*', r'\t[ -n \"$GLOBAL_DNSMASQ_CONF\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF\"\n\t[ -n \"$GLOBAL_DNSMASQ_CONF_PATH\" ] && rm -rf \"$GLOBAL_DNSMASQ_CONF_PATH\"\n\tdel_smartdns_shared_conf\n', c, flags=re.S); open(p,'w',encoding='utf-8').write(c); sys.exit(0 if '<<<<<<<' not in c else 1)"
-              git add luci-app-passwall/root/usr/share/passwall/app.sh
-              echo "Auto-resolved app.sh conflict."
-            fi
-
-            # Auto-resolve luci_update.sh conflict using upstream ACL MD5 verification
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/luci_update\.sh"; then
-              git checkout --theirs "luci-app-passwall/root/usr/share/passwall/luci_update.sh"
-              git add "luci-app-passwall/root/usr/share/passwall/luci_update.sh"
-              echo "Auto-resolved luci_update.sh conflict using upstream ACL MD5 verification."
-            fi
-
-            # Auto-resolve nftables.sh conflict by preserving custom base_chain logic
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/usr/share/passwall/nftables\.sh"; then
-              python3 -c "import re, sys; p='luci-app-passwall/root/usr/share/passwall/nftables.sh'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'base_chain' in m.group(1) else (m.group(2) if 'base_chain' in m.group(2) else m.group(1)), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
-              git add "luci-app-passwall/root/usr/share/passwall/nftables.sh"
-              echo "Auto-resolved nftables.sh conflict preserving custom features."
-            fi
-
-            # Auto-resolve uci-defaults conflict preserving global_optimize initialization
-            if echo "$CONFLICT_FILES" | grep -qx "luci-app-passwall/root/etc/uci-defaults/luci-app-passwall"; then
-              python3 -c "import re, sys; p='luci-app-passwall/root/etc/uci-defaults/luci-app-passwall'; c=open(p,'r',encoding='utf-8').read(); n=re.sub(r'<{7}[^\n]*\n(.*?)\n={7}\n(.*?)\n>{7}[^\n]*', lambda m: m.group(1) if 'global_optimize' in m.group(1) else (m.group(2) if 'global_optimize' in m.group(2) else m.group(1)), c, flags=re.S); open(p,'w',encoding='utf-8').write(n); sys.exit(0 if '<<<<<<<' not in n else 1)"
-              git add "luci-app-passwall/root/etc/uci-defaults/luci-app-passwall"
-              echo "Auto-resolved uci-defaults conflict preserving global_optimize initialization."
-            fi
-
+            # 严苛熔断：除白名单外，任何实质代码冲突绝对禁止脚本擅自猜测，直接 abort 退出
             REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
-            if [ -z "$REMAINING_CONFLICTS" ]; then
-              git commit -m "merge: sync upstream ($SHORT_SHA) with auto-resolved conflicts"
-              echo "Merge conflicts resolved successfully."
-            else
-              echo "::error::Substantive code conflict detected! Aborting merge to keep main branch clean."
+            if [ -n "$REMAINING_CONFLICTS" ]; then
+              echo "::error::Substantive code conflict detected in files: $REMAINING_CONFLICTS. Aborting merge to protect custom features."
               git diff
               git merge --abort
               exit 1
             fi
+
+            # 核心防线：解决冲突后检测暂存区是否有实质代码改动，杜绝空白 Merge
+            if git diff --cached --quiet; then
+              echo "::warning::Merge resulted in 0 byte code changes against HEAD. Aborting merge to prevent empty merge commit."
+              git merge --abort
+              echo "has_code_update=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git commit -m "merge: sync upstream ($SHORT_SHA) with auto-resolved conflicts"
+            echo "Merge conflicts resolved successfully."
           fi
 
-          # Auto-bump PKG_RELEASE if current Makefile version matches or lags behind latest GitHub release
-          REMOTE_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
-          CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
-          CUR_REL=$(awk -F ':=' '/^PKG_RELEASE:=/ {gsub(/[ \t\r\n]/, "", $2); print $2}' luci-app-passwall/Makefile)
-          if [ -n "$REMOTE_TAG" ] && [ "${REMOTE_TAG%-*}" = "$CUR_VER" ]; then
-            REMOTE_REL="${REMOTE_TAG##*-}"
-            if [ "$CUR_REL" -le "$REMOTE_REL" ] 2>/dev/null; then
-              NEXT_REL=$((REMOTE_REL + 1))
-              sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${NEXT_REL}/" luci-app-passwall/Makefile
-              git add luci-app-passwall/Makefile
-              git commit -m "build: bump PKG_RELEASE to ${NEXT_REL} for upstream sync"
-              echo "Auto-bumped PKG_RELEASE to ${NEXT_REL} (previous release: ${REMOTE_TAG})."
-            fi
+          # 自研特性完整性门禁
+          for f in $(git ls-files "*.sh"); do
+            bash -n "$f" || { echo "::error::Shell syntax validation failed on $f"; exit 1; }
+          done
+          for sig in "psw_custom" "smartdns-shared" "get_node_fingerprint"; do
+            grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
+          done
+
+          # 审计代码逻辑变更以仲裁是否发版
+          CODE_DIFF_LINES=$(git diff HEAD^1 HEAD -- luci-app-passwall/ | wc -l)
+          CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' luci-app-passwall/Makefile | tr -d ' \t\r\n')
+          LATEST_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
+          LATEST_MAIN_VER="${LATEST_TAG%-*}"
+
+          if [ "$CUR_VER" != "$LATEST_MAIN_VER" ]; then
+            echo "Major version bump detected (${LATEST_MAIN_VER} -> ${CUR_VER}). Triggering compile."
+            echo "has_code_update=true" >> "$GITHUB_OUTPUT"
+          elif [ "$CODE_DIFF_LINES" -gt 0 ]; then
+            echo "Substantive code changes detected (${CODE_DIFF_LINES} lines diff in luci-app-passwall). Triggering compile."
+            echo "has_code_update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No substantive code changes in luci-app-passwall. Skipping auto-compile."
+            echo "has_code_update=false" >> "$GITHUB_OUTPUT"
           fi
 
           echo "Sync completed successfully."
@@ -177,7 +147,7 @@ jobs:
           git push origin custom --force-with-lease
 
       - name: Trigger compile workflow
-        if: steps.check_update.outputs.has_update == 'true'
+        if: steps.sync.outputs.has_code_update == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

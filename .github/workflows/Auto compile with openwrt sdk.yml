@@ -72,6 +72,7 @@ jobs:
       has_update: ${{ steps.check_version.outputs.has_update }}
       prerelease: ${{ steps.check_version.outputs.prerelease }}
       canary_version: ${{ steps.check_version.outputs.canary_version }}
+      target_pkg_release: ${{ steps.check_version.outputs.target_pkg_release }}
     steps:
       - name: Checkout
         uses: actions/checkout@main
@@ -83,38 +84,44 @@ jobs:
         id: check_version
         env:
           url_tags: https://api.github.com/repos/${{ env.passwall }}/releases/latest
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           target_ref="${{ inputs.target_ref || github.ref_name }}"
           custom_tag="${{ inputs.tag_name }}"
           force_compile="${{ inputs.force_compile }}"
 
           canary_version=""
+          target_pkg_release=""
+          cd luci-app-passwall
+          cur_ver=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' Makefile | tr -d ' \t\r\n')
+          cd ..
+
           if [ "$custom_tag" = "canary" ] || [ "$target_ref" = "rolling" ]; then
-            cd luci-app-passwall
-            cur_ver=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' Makefile | tr -d ' \t\r\n')
             canary_ts=$(date -u +%Y%m%d%H%M)
             canary_version="${cur_ver}.${canary_ts}"
-            cd ..
             latest_version="canary"
+            prerelease=true
           elif [ -n "$custom_tag" ]; then
             latest_version="$custom_tag"
+            if [ -n "${{ inputs.prerelease }}" ]; then
+              prerelease="${{ inputs.prerelease }}"
+            else
+              prerelease=false
+            fi
           else
-            cd luci-app-passwall
-            latest_version=$(awk -F ':=' '/^PKG_VERSION:=|^PKG_RELEASE:=/ {print $2}' Makefile | sed ':a;N;s/\$(PKG_VERSION)-//;s/\n$//;s/\n/-/;ba')
-            cd ..
+            # 正式版构建：全局单调递增，永不归零
+            prerelease=false
+            MAX_REL=$(gh release list --limit 100 --json tagName,isPrerelease --jq '
+              [.[] | select(.isPrerelease == false) | .tagName | capture("-(?<rel>[0-9]+)$") | .rel | tonumber] | max // 0
+            ' 2>/dev/null || echo 0)
+
+            TARGET_REL=$((MAX_REL + 1))
+            target_pkg_release="${TARGET_REL}"
+            latest_version="${cur_ver}-${TARGET_REL}"
           fi
           echo "latest_version=${latest_version}" >> $GITHUB_OUTPUT
           echo "canary_version=${canary_version}" >> $GITHUB_OUTPUT
-
-          if [ -n "${{ inputs.prerelease }}" ]; then
-            prerelease="${{ inputs.prerelease }}"
-          elif [ "$target_ref" = "rolling" ]; then
-            prerelease=true
-          elif [ "$target_ref" = "main" ] || [ "$target_ref" = "custom" ]; then
-            prerelease=false
-          else
-            prerelease=true
-          fi
+          echo "target_pkg_release=${target_pkg_release}" >> $GITHUB_OUTPUT
           echo "prerelease=${prerelease}" >> $GITHUB_OUTPUT
 
           remote_latest_version=$(wget -qO- -t1 -T2 ${{env.url_tags}} | jq -r '.tag_name')
@@ -127,12 +134,14 @@ jobs:
           echo "Remote latest: $remote_latest_version"
           echo "previous_version=${remote_latest_version}" >> $GITHUB_OUTPUT
 
-          if [ "$force_compile" = "true" ]; then
-            echo "Force compile enabled"
+          if [ "$force_compile" = "true" ] || [ "$latest_version" = "canary" ]; then
+            echo "Compilation explicitly forced or canary build requested"
             echo "has_update=true" >> $GITHUB_OUTPUT
           elif [ "$latest_version" = "$remote_latest_version" ]; then
+            echo "Target version $latest_version already matches remote latest release"
             echo "has_update=false" >> $GITHUB_OUTPUT
           else
+            echo "Target version $latest_version is new and ready for build"
             echo "has_update=true" >> $GITHUB_OUTPUT
           fi
 
@@ -286,13 +295,18 @@ jobs:
         with:
           ref: ${{ inputs.target_ref || github.ref_name }}
 
-      - name: Inject Canary Dynamic Version
-        if: needs.job_check.outputs.canary_version != ''
+      - name: Inject Dynamic Version into Makefile
         run: |
-          canary_ver="${{ needs.job_check.outputs.canary_version }}"
-          echo "Injecting dynamic Canary version: ${canary_ver} into Makefile..."
-          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${canary_ver}/" luci-app-passwall/Makefile
-          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" luci-app-passwall/Makefile
+          if [ -n "${{ needs.job_check.outputs.canary_version }}" ]; then
+            canary_ver="${{ needs.job_check.outputs.canary_version }}"
+            echo "Injecting dynamic Canary version: ${canary_ver} into Makefile..."
+            sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${canary_ver}/" luci-app-passwall/Makefile
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" luci-app-passwall/Makefile
+          elif [ -n "${{ needs.job_check.outputs.target_pkg_release }}" ]; then
+            target_rel="${{ needs.job_check.outputs.target_pkg_release }}"
+            echo "Injecting dynamic release version: PKG_RELEASE:=${target_rel} into Makefile..."
+            sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=${target_rel}/" luci-app-passwall/Makefile
+          fi
           head -n 15 luci-app-passwall/Makefile
 
       - name: Generate .config for Language Packs
