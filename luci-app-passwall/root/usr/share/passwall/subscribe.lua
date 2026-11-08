@@ -2011,12 +2011,12 @@ local function update_node(manual)
 					end
 					-- sing-box/xray 节点域名解析
 					if kkk == "type" and (vvv == "Xray" or vvv == "sing-box") then
-						if domain_resolver then
+						if domain_resolver and domain_resolver ~= "" and domain_resolver ~= "disable" then
 							uci_set(cfgid, "domain_resolver", domain_resolver)
-							if domain_resolver_dns then
-								uci_set(cfgid, "domain_resolver_dns", domain_resolver_dns)
-							elseif domain_resolver_dns_https then
+							if domain_resolver == "https" and domain_resolver_dns_https then
 								uci_set(cfgid, "domain_resolver_dns_https", domain_resolver_dns_https)
+							elseif (domain_resolver == "udp" or domain_resolver == "tcp") and domain_resolver_dns then
+								uci_set(cfgid, "domain_resolver_dns", domain_resolver_dns)
 							end
 						end
 						if domain_strategy then
@@ -2275,7 +2275,15 @@ local execute = function()
 					local stdout = f:read("*all")
 					f:close()
 					local raw_data = api.trim(stdout)
-					raw_data = parseClashNode(raw_data)
+					local auto_dns = value.domain_resolver == nil or value.domain_resolver == ""
+					local resolver
+					raw_data, resolver = parseClashNode(raw_data, remark, auto_dns)
+					if auto_dns and resolver then
+						-- Only enrich this run's sub_cfg; keep the subscription's Auto setting.
+						value.domain_resolver = resolver.domain_resolver
+						value.domain_resolver_dns = resolver.domain_resolver_dns
+						value.domain_resolver_dns_https = resolver.domain_resolver_dns_https
+					end
 					-- 优先提取标准 Clash 订阅响应头中的账户用量与到期时间（不受节点变化与否影响）
 					if headers and headers ~= "" then
 						subscribe_info[cfgid] = parse_clash_sub_info(headers)
@@ -2284,8 +2292,19 @@ local execute = function()
 					log_buffer = {}
 					local parsed_nodes = parse_link(raw_data, "2", remark, value)
 					local old_md5 = value.md5 or ""
-					local new_md5 = #parsed_nodes > 0 and get_node_fingerprint(parsed_nodes) or ""
-					-- 仅当解析出有效节点且节点集合与上次完全一致时，跳过节点重写与服务重启
+					local new_md5 = ""
+					if #parsed_nodes > 0 then
+						local node_fp = get_node_fingerprint(parsed_nodes)
+						if value.domain_resolver and value.domain_resolver ~= "" and value.domain_resolver ~= "disable" then
+							local protocol = value.domain_resolver
+							local dns = (protocol == "udp" or protocol == "tcp") and value.domain_resolver_dns or ""
+							local doh = protocol == "https" and value.domain_resolver_dns_https or ""
+							new_md5 = api.md5_string(node_fp .. "|" .. protocol .. "|" .. (dns or "") .. "|" .. (doh or ""))
+						else
+							new_md5 = node_fp
+						end
+					end
+					-- 节点物理拓扑和最终生效的 DNS 都未变化时，跳过节点重写与服务重启
 					if not manual_sub and new_md5 ~= "" and old_md5 == new_md5 then
 						log_buffer = nil -- 无物理变动，直接丢弃暂存的丢弃与计数明细
 						log(string.format("订阅:【%s】物理出站配置未发生变动，跳过节点重写与服务重启。", remark))
@@ -2348,6 +2367,7 @@ elseif arg[1] == "add" then
 	local f = assert(io.open("/tmp/links.conf", 'r'))
 	local raw = f:read('*all')
 	f:close()
+	raw = parseClashNode(raw, arg[2])
 	parse_link(raw, "1", arg[2])
 	if update_node(1) then uci_save(true) end
 	api.remove("/tmp/links.conf")
