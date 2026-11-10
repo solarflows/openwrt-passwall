@@ -1693,10 +1693,14 @@ function to_check_self(channel)
 	local remote_version = release.tag_name:gsub("^v", "")
 	local has_update
 	if is_canary then
-		has_update = (local_version ~= remote_version)
-		if not has_update then
-			has_update = true
+		local canary_ver = (release.name or ""):match("%(([%w%.%-_]+)%)")
+		if not canary_ver and main and main.name then
+			canary_ver = main.name:match("luci%-app%-" .. appname .. "[_%-](%d+[%w%.%-_]-)[_%-]") or main.name:match("luci%-app%-" .. appname .. "[_%-](%d+[%w%.%-_]*)")
 		end
+		if canary_ver and canary_ver ~= "" then
+			remote_version = canary_ver
+		end
+		has_update = (local_version ~= remote_version)
 	else
 		-- Keep the release suffix (-1, -2, ...) so package revisions are compared too.
 		has_update = compare_versions(local_version, "<", remote_version)
