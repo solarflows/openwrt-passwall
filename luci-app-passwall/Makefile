@@ -172,6 +172,9 @@ define Package/$(PKG_NAME)/conffiles
 /etc/passwall/
 endef
 
+# Downstream release revision anchor (single source of truth for feed builds)
+PKG_RELEASE:=25
+
 include $(TOPDIR)/feeds/luci/luci.mk
 
 # call BuildPackage - OpenWrt buildroot signature

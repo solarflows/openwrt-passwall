@@ -120,17 +120,31 @@ jobs:
             grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
           done
 
-          # 审计代码逻辑变更以仲裁是否发版
+          # 审计代码逻辑变更并维护文末锚点版本号
           CODE_DIFF_LINES=$(git diff HEAD^1 HEAD -- luci-app-passwall/ | wc -l)
           CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' luci-app-passwall/Makefile | tr -d ' \t\r\n')
           LATEST_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
           LATEST_MAIN_VER="${LATEST_TAG%-*}"
 
           if [ "$CUR_VER" != "$LATEST_MAIN_VER" ]; then
-            echo "Major version bump detected (${LATEST_MAIN_VER} -> ${CUR_VER}). Triggering compile."
+            echo "Major version bump detected (${LATEST_MAIN_VER} -> ${CUR_VER}). Resetting PKG_RELEASE to 1 in downstream anchor."
+            python3 -c "import re; p='luci-app-passwall/Makefile'; c=open(p,'r',encoding='utf-8').read(); c=re.sub(r'PKG_RELEASE:=\d+(\s*\n\s*include \$\(TOPDIR\)/feeds/luci/luci\.mk)', r'PKG_RELEASE:=1\1', c); open(p,'w',encoding='utf-8').write(c)"
+            git add luci-app-passwall/Makefile
+            git commit -m "build: reset PKG_RELEASE to 1 for upstream major version bump (${CUR_VER})"
             echo "has_code_update=true" >> "$GITHUB_OUTPUT"
           elif [ "$CODE_DIFF_LINES" -gt 0 ]; then
-            echo "Substantive code changes detected (${CODE_DIFF_LINES} lines diff in luci-app-passwall). Triggering compile."
+            echo "Substantive code changes detected (${CODE_DIFF_LINES} lines diff in luci-app-passwall)."
+            CUR_REL=$(awk -F ':=' '/^PKG_RELEASE:=/ {print $2}' luci-app-passwall/Makefile | tail -n 1 | tr -d ' \t\r\n')
+            REMOTE_REL="${LATEST_TAG##*-}"
+            if [ -n "$REMOTE_REL" ] && [ "$REMOTE_REL" -ge "$CUR_REL" ] 2>/dev/null; then
+              NEXT_REL=$((REMOTE_REL + 1))
+            else
+              NEXT_REL=$((CUR_REL + 1))
+            fi
+            echo "Bumping downstream release anchor from ${CUR_REL} to ${NEXT_REL}..."
+            NEXT_REL="$NEXT_REL" python3 -c "import os, re; p='luci-app-passwall/Makefile'; c=open(p,'r',encoding='utf-8').read(); next_rel=os.environ['NEXT_REL']; c=re.sub(r'PKG_RELEASE:=\d+(\s*\n\s*include \$\(TOPDIR\)/feeds/luci/luci\.mk)', r'PKG_RELEASE:=' + next_rel + r'\1', c); open(p,'w',encoding='utf-8').write(c)"
+            git add luci-app-passwall/Makefile
+            git commit -m "build: bump PKG_RELEASE to ${NEXT_REL} for upstream sync"
             echo "has_code_update=true" >> "$GITHUB_OUTPUT"
           else
             echo "No substantive code changes in luci-app-passwall. Skipping auto-compile."
