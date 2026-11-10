@@ -173,7 +173,7 @@ define Package/$(PKG_NAME)/conffiles
 endef
 
 # Downstream release revision anchor (single source of truth for feed builds)
-PKG_RELEASE:=25
+PKG_RELEASE:=26
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
