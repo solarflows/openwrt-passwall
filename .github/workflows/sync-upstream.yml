@@ -120,7 +120,7 @@ jobs:
             grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
           done
 
-          # 审计代码逻辑变更并维护文末锚点版本号
+          # 审计代码逻辑变更并维护文末锚点版本号（全局单调递增，永不归零）
           CODE_DIFF_LINES=$(git diff HEAD^1 HEAD -- luci-app-passwall/ | wc -l)
           CUR_VER=$(awk -F ':=' '/^PKG_VERSION:=/ {print $2}' luci-app-passwall/Makefile | tr -d ' \t\r\n')
           LATEST_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name' 2>/dev/null || echo "")
@@ -128,20 +128,26 @@ jobs:
           TARGET_REL=""
           COMMIT_MSG=""
 
-          if [ "$CUR_VER" != "$LATEST_MAIN_VER" ]; then
-            echo "Major version bump detected (${LATEST_MAIN_VER} -> ${CUR_VER}). Resetting PKG_RELEASE to 1 in downstream anchor."
-            TARGET_REL="1"
-            COMMIT_MSG="build: reset PKG_RELEASE to 1 for upstream major version bump (${CUR_VER})"
-          elif [ "$CODE_DIFF_LINES" -gt 0 ]; then
-            echo "Substantive code changes detected (${CODE_DIFF_LINES} lines diff in luci-app-passwall)."
+          if [ "$CUR_VER" != "$LATEST_MAIN_VER" ] || [ "$CODE_DIFF_LINES" -gt 0 ]; then
+            echo "Upstream changes detected (ver: ${LATEST_MAIN_VER} -> ${CUR_VER}, diff lines: ${CODE_DIFF_LINES})."
             CUR_REL=$(awk -F ':=' '/^PKG_RELEASE:=/ {print $2}' luci-app-passwall/Makefile | tail -n 1 | tr -d ' \t\r\n')
+            MAX_REL=$(gh release list -R "${{ github.repository }}" --limit 100 --json tagName,isPrerelease --jq '
+              [.[] | select(.isPrerelease == false) | .tagName | capture("-(?<rel>[0-9]+)$") | .rel | tonumber] | max // 0
+            ' 2>/dev/null || echo 0)
             REMOTE_REL="${LATEST_TAG##*-}"
-            if [ -n "$REMOTE_REL" ] && [ "$REMOTE_REL" -ge "$CUR_REL" ] 2>/dev/null; then
-              TARGET_REL=$((REMOTE_REL + 1))
-            else
-              TARGET_REL=$((CUR_REL + 1))
-            fi
-            echo "Bumping downstream release anchor from ${CUR_REL} to ${TARGET_REL}..."
+
+            BASE_REL="${CUR_REL:-0}"
+            for cand in "$MAX_REL" "$REMOTE_REL"; do
+              case "$cand" in
+                ''|*[!0-9]*) continue ;;
+              esac
+              if [ "$cand" -gt "$BASE_REL" ]; then
+                BASE_REL="$cand"
+              fi
+            done
+            TARGET_REL=$((BASE_REL + 1))
+
+            echo "Bumping monotonic downstream release anchor from ${CUR_REL} to ${TARGET_REL} (history max: ${MAX_REL}, latest: ${REMOTE_REL})..."
             COMMIT_MSG="build: bump PKG_RELEASE to ${TARGET_REL} for upstream sync"
           else
             echo "No substantive code changes in luci-app-passwall. Skipping auto-compile."
