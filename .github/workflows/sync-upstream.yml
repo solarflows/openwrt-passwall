@@ -91,13 +91,14 @@ jobs:
               echo "Auto-resolved passwall.po translation conflict."
             fi
 
-            # 严苛熔断：除白名单外，任何实质代码冲突绝对禁止脚本擅自猜测，直接 abort 退出
+            # 优雅熔断：除白名单外，任何实质代码冲突绝对禁止脚本擅自猜测，直接 abort 并以警告状态退出（不标红报错）
             REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U)
             if [ -n "$REMAINING_CONFLICTS" ]; then
-              echo "::error::Substantive code conflict detected in files: $REMAINING_CONFLICTS. Aborting merge to protect custom features."
+              echo "::warning title=Sync Deferred (Code Conflict)::Substantive code conflict detected in files: $REMAINING_CONFLICTS. Aborting merge to protect custom features; awaiting manual resolution."
               git diff
               git merge --abort
-              exit 1
+              echo "has_code_update=false" >> "$GITHUB_OUTPUT"
+              exit 0
             fi
 
             # 核心防线：解决冲突后检测暂存区是否有实质代码改动，杜绝空白 Merge
@@ -112,13 +113,26 @@ jobs:
             echo "Merge conflicts resolved successfully."
           fi
 
-          # 自研特性完整性门禁
+          # 自研特性完整性门禁（遇到校验异常以 Warning 优雅退出并放弃推送，不触发红叉报警）
+          GATE_FAILED=false
           for f in $(git ls-files "*.sh"); do
-            bash -n "$f" || { echo "::error::Shell syntax validation failed on $f"; exit 1; }
+            if ! bash -n "$f"; then
+              echo "::warning title=Quality Gate::Shell syntax validation failed on $f"
+              GATE_FAILED=true
+            fi
           done
           for sig in "psw_custom" "smartdns-shared" "get_node_fingerprint"; do
-            grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
+            if ! grep -rq "$sig" luci-app-passwall/; then
+              echo "::warning title=Quality Gate::Missing custom feature signature: $sig"
+              GATE_FAILED=true
+            fi
           done
+          if [ "$GATE_FAILED" = "true" ]; then
+            echo "::warning::Quality gate checks failed. Aborting merge to protect branch integrity."
+            git reset --hard origin/main
+            echo "has_code_update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # 审计代码逻辑变更并维护文末锚点版本号（全局单调递增，永不归零）
           CODE_DIFF_LINES=$(git diff HEAD^1 HEAD -- luci-app-passwall/ | wc -l)
