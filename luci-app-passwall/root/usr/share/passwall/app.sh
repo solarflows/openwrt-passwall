@@ -358,7 +358,7 @@ run_socks() {
 	elif [ "${log_file#"$TMP_PATH/"}" = "$log_file" ]; then
 		log_file=$TMP_PATH/$log_file
 	fi
-	loglevel=${loglevel:-warn}
+	loglevel=${loglevel:-$(config_n_get @global[0] loglevel "warn")}
 
 	local type=$(echo $(config_n_get $node type) | tr 'A-Z' 'a-z')
 	local remarks=$(config_n_get $node remarks)
@@ -428,6 +428,13 @@ run_socks() {
 		json_add_string "server_port" "${server_port}"
 		json_add_string "server_username" "${socks_username}"
 		json_add_string "server_password" "${socks_password}"
+		if [ "$log_file" = "/dev/null" ]; then
+			json_add_string "log" "0"
+		else
+			json_add_string "log" "1"
+			json_add_string "logfile" "${log_file}"
+		fi
+		json_add_string "loglevel" "$loglevel"
 		if [ -n "${SINGBOX_BIN}" ]; then
 			type="sing-box"
 			local bin="${SINGBOX_BIN}"
@@ -877,13 +884,14 @@ start_socks() {
 				local config_file="${id}.json"
 				local log_file="${id}.log"
 				local log=$(config_n_get $id log 1)
+				local loglevel=$(config_n_get $id loglevel)
 				[ "$log" = "0" ] && log_file=""
 				local http_port=$(config_n_get $id http_port 0)
 				local http_config_file="${id}_http.json"
 				local enable_autoswitch=$(config_n_get $id enable_autoswitch 0)
 				local no_rec=0
 				[ "$enable_autoswitch" = "1" ] && no_rec=1
-				NO_REC_PROCESS=$no_rec $APP_PATH/app.sh run_socks flag=$id node=$node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file
+				NO_REC_PROCESS=$no_rec $APP_PATH/app.sh run_socks flag=$id node=$node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file loglevel=$loglevel
 				set_cache_var "${id}" "$node"
 				#自动切换逻辑
 				[ "$enable_autoswitch" = "1" ] && { $APP_PATH/socks_auto_switch.sh ${id} > /dev/null 2>&1 & }
@@ -919,11 +927,12 @@ socks_node_switch() {
 		local config_file="${flag}.json"
 		local log_file="${flag}.log"
 		local log=$(config_n_get $flag log 1)
+		local loglevel=$(config_n_get $flag loglevel)
 		[ "$log" = "0" ] && log_file=""
 		local http_port=$(config_n_get $flag http_port 0)
 		local http_config_file="${flag}_http.json"
 		LOG_FILE="/dev/null"
-		run_socks flag=$flag node=$new_node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file
+		run_socks flag=$flag node=$new_node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file loglevel=$loglevel
 		sleep 2s
 		[ "$(check_port_exists "$port" tcp)" = "0" ] && return 1
 		set_cache_var "${flag}" "$new_node"
@@ -1107,7 +1116,7 @@ start_dns() {
 			v2ray_local_dns="direct_dns_tcp_server=${DIRECT_DNS}"
 
 			# ChinaDNS-NG and SmartDNS can query TCP upstreams directly.
-			if { [ "$DNS_SHUNT" != "chinadns-ng" ] && [ "$DNS_SHUNT" != "smartdns" ]; } || [ "$ACL_RULE_DNSMASQ" = "1" ]; then
+			if { [ "$DNS_SHUNT" != "chinadns-ng" ] && [ "$DNS_SHUNT" != "smartdns" ] && [ "$DNS_SHUNT" != "smartdns-shared" ]; } || [ "$ACL_RULE_DNSMASQ" = "1" ]; then
 				LOCAL_DNS="127.0.0.1#${NEXT_DNS_LISTEN_PORT}"
 				set_cache_var "LOCAL_DNS" "$LOCAL_DNS"
 				ln_run "$(first_type chinadns-ng)" chinadns-ng "/dev/null" -b :: -l ${NEXT_DNS_LISTEN_PORT} -c ${china_ng_local_dns} -d chn
@@ -1277,6 +1286,7 @@ start_dns() {
 				return 1
 			}
 			local smartdns_config="${GLOBAL_ACL_PATH}/smartdns.conf"
+
 			local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
 			echolog "  - SmartDNS(127.0.0.1#${smartdns_listen_port})，直连 DNS：${SMARTDNS_DIRECT_DNS} -> 分组(direct)"
 			[ "${SMARTDNS_LOCAL_PORT:-0}" != "0" ] && echolog "  - SmartDNS 直连入口：${LOCAL_DNS} -> 分组(direct)"
@@ -1301,10 +1311,15 @@ start_dns() {
 			ln_run "$smartdns_bin" smartdns "/dev/null" -f -c "$smartdns_config" -p "${GLOBAL_ACL_PATH}/smartdns.pid"
 			china_ng_listen="127.0.0.1#${smartdns_listen_port},::1#${smartdns_listen_port}"
 			USE_DEFAULT_DNS="chinadns_ng"
+
 		else
 			DNS_SHUNT="dnsmasq"
 			echolog "  * 未安装SmartDNS，默认使用Dnsmasq进行域名解析！"
 		fi
+	}
+
+	[ "${DNS_SHUNT}" = "smartdns-shared" ] && {
+		start_smartdns_shared
 	}
 
 	[ "${DNS_SHUNT}" = "chinadns-ng" ] && [ -n "$(first_type chinadns-ng)" ] && {
@@ -1382,6 +1397,10 @@ start_dns() {
 		# SmartDNS reads DHCP leases itself; no forwarding dnsmasq instance is needed.
 		DNS_REDIRECT_PORT=${smartdns_listen_port}
 		set_cache_var "ACL_default_dns_port" "${DNS_REDIRECT_PORT}"
+	elif [ "${DNS_SHUNT}" = "smartdns-shared" ]; then
+		DNS_REDIRECT_PORT=${SMARTDNS_LISTEN_PORT}
+		GLOBAL_DNSMASQ_PORT=""
+		set_cache_var "ACL_default_dns_port" "${DNS_REDIRECT_PORT}"
 	else
 		#Run a copy dnsmasq instance, DNS hijack for that need proxy devices.
 		GLOBAL_DNSMASQ_PORT=$(get_new_port 11400)
@@ -1428,7 +1447,7 @@ acl_app() {
 		socks_port=11100
 		redir_port=11200
 		dns_port=11300
-		dnsmasq_port=${GLOBAL_DNSMASQ_PORT:-11400}
+		dnsmasq_port=11400
 		chinadns_port=11500
 		for sid in $items; do
 			[ "$(config_n_get $sid enabled)" = "1" ] || continue
@@ -1800,8 +1819,9 @@ stop() {
 	unset XRAY_LOCATION_ASSET
 	unset SS_SYSTEM_DNS_RESOLVER_FORCE_BUILTIN
 	stop_crontab "$1"
-	rm -rf $GLOBAL_DNSMASQ_CONF
-	rm -rf $GLOBAL_DNSMASQ_CONF_PATH
+	[ -n "$GLOBAL_DNSMASQ_CONF" ] && rm -rf "$GLOBAL_DNSMASQ_CONF"
+	[ -n "$GLOBAL_DNSMASQ_CONF_PATH" ] && rm -rf "$GLOBAL_DNSMASQ_CONF_PATH"
+	del_smartdns_shared_conf
 	[ "1" = "1" ] && {
 		#restore logic
 		bak_dnsmasq_dns_redirect=$(config_n_get @global[0] dnsmasq_dns_redirect)
@@ -1864,9 +1884,11 @@ get_config() {
 	}
 	CLIENT_PROXY=$(config_n_get @global[0] client_proxy 1)
 	DNS_SHUNT=$(config_n_get @global[0] dns_shunt dnsmasq)
-	[ -z "$(first_type $DNS_SHUNT)" ] && DNS_SHUNT="dnsmasq"
+	local check_shunt="${DNS_SHUNT}"
+	[ "${check_shunt}" = "smartdns-shared" ] && check_shunt="smartdns"
+	[ -z "$(first_type $check_shunt)" ] && DNS_SHUNT="dnsmasq"
 	DNS_MODE=$(config_n_get @global[0] dns_mode tcp)
-	[ "$DNS_SHUNT" = "smartdns" ] && DNS_MODE=$(config_n_get @global[0] smartdns_dns_mode socks)
+	{ [ "$DNS_SHUNT" = "smartdns" ] || [ "$DNS_SHUNT" = "smartdns-shared" ]; } && DNS_MODE=$(config_n_get @global[0] smartdns_dns_mode socks)
 	REMOTE_DNS=$(normalize_dns "$(config_n_get @global[0] remote_dns 1.1.1.1)")
 	USE_DEFAULT_DNS=$(config_n_get @global[0] use_default_dns direct)
 	FILTER_PROXY_IPV6=$(config_n_get @global[0] filter_proxy_ipv6 0)
@@ -1899,8 +1921,18 @@ get_config() {
 	set_cache_var GLOBAL_DNSMASQ_CONF_PATH ${GLOBAL_ACL_PATH}/dnsmasq.d
 
 	SMARTDNS_LOCAL_PORT=0
+	SMARTDNS_LISTEN_PORT=0
 	SMARTDNS_DIRECT_DNS=
-	if [ "$ENABLED_DEFAULT_ACL" = "1" ] && [ "$DNS_SHUNT" = "smartdns" ]; then
+	if [ "$ENABLED_DEFAULT_ACL" = "1" ] && [ "$DNS_SHUNT" = "smartdns-shared" ]; then
+		SMARTDNS_LOCAL_PORT=$(get_new_port "$NEXT_DNS_LISTEN_PORT" tcp,udp)
+		NEXT_DNS_LISTEN_PORT=$(expr $SMARTDNS_LOCAL_PORT + 1)
+		SMARTDNS_LISTEN_PORT=$(get_new_port "$NEXT_DNS_LISTEN_PORT" tcp,udp)
+		NEXT_DNS_LISTEN_PORT=$(expr $SMARTDNS_LISTEN_PORT + 1)
+		LOCAL_DNS="127.0.0.1#${SMARTDNS_LOCAL_PORT}"
+		set_cache_var "LOCAL_DNS" "$LOCAL_DNS"
+		set_cache_var "SMARTDNS_LOCAL_PORT" "${SMARTDNS_LOCAL_PORT}"
+		set_cache_var "SMARTDNS_LISTEN_PORT" "${SMARTDNS_LISTEN_PORT}"
+	elif [ "$ENABLED_DEFAULT_ACL" = "1" ] && [ "$DNS_SHUNT" = "smartdns" ]; then
 		# 显式列出空白字符，兼容未启用字符类支持的 BusyBox tr。
 		SMARTDNS_DIRECT_DNS=$(config_n_get @global[0] smartdns_direct_dns | tr -s ' \t\r\n\v\f' '|' | sed 's/^|//;s/|$//')
 		[ "$SMARTDNS_DIRECT_DNS" = "nil" ] && SMARTDNS_DIRECT_DNS=
@@ -1921,8 +1953,8 @@ get_config() {
 				[ "$smartdns_host_ip" != "$SMARTDNS_DIRECT_DNS" ] && [ -n "$smartdns_host_ip" ] && \
 					LOCAL_DNS=$(normalize_dns "$smartdns_host_ip" "${LOCAL_DNS##*#}")
 			else
-				SMARTDNS_LOCAL_PORT=${NEXT_DNS_LISTEN_PORT}
-				NEXT_DNS_LISTEN_PORT=$(expr $NEXT_DNS_LISTEN_PORT + 1)
+				SMARTDNS_LOCAL_PORT=$(get_new_port "$NEXT_DNS_LISTEN_PORT" tcp,udp)
+				NEXT_DNS_LISTEN_PORT=$(expr $SMARTDNS_LOCAL_PORT + 1)
 				LOCAL_DNS="127.0.0.1#${SMARTDNS_LOCAL_PORT}"
 			fi
 		fi
@@ -1941,6 +1973,94 @@ get_local_dns() {
 	[ -z "${DEFAULT_DNS}" ] && [ "$(echo $ISP_DNS | tr ' ' '\n' | wc -l)" -ge 1 ] && DEFAULT_DNS=$(echo -n $ISP_DNS | tr ' ' '\n' | tr '\n' ',' | sed 's/,$//')
 	LOCAL_DNS="${DEFAULT_DNS:-223.5.5.5}"
 	LOCAL_DNS="${LOCAL_DNS%%,*}"
+}
+
+start_smartdns_shared() {
+	if ! command -v smartdns >/dev/null 2>&1 && [ -z "$(first_type smartdns)" ]; then
+		DNS_SHUNT="dnsmasq"
+		echolog "  * 未安装SmartDNS，默认使用Dnsmasq进行域名解析！"
+		return 1
+	fi
+
+	rm -rf $TMP_PATH2/dnsmasq_default*
+	mkdir -p /tmp/etc/smartdns
+
+	local group_domestic=$(config_n_get @global[0] group_domestic "cn")
+	local smartdns_remote_dns=$(config_n_get @global[0] smartdns_remote_dns)
+	if [ -n "${smartdns_remote_dns}" ] && [ "${smartdns_remote_dns}" != "nil" ]; then
+		smartdns_remote_dns=$(echo ${smartdns_remote_dns} | tr -s ' ' '|')
+	else
+		smartdns_remote_dns="tcp://1.1.1.1"
+	fi
+	local smartdns_default_dns=$(config_n_get @global[0] smartdns_default_dns direct)
+	local subnet_ip=$(config_n_get @global[0] remote_dns_client_ip)
+
+	local smartdns_split_shunt=$(config_n_get @global[0] smartdns_split_shunt $(config_n_get @global_optimize[0] smartdns_split_shunt 0))
+	local smartdns_no_ip_alias=$(config_n_get @global[0] smartdns_no_ip_alias $(config_n_get @global_optimize[0] smartdns_no_ip_alias 1))
+	local smartdns_cache_mode=$(config_n_get @global[0] smartdns_cache_mode $(config_n_get @global_optimize[0] smartdns_cache_mode "300"))
+	local smartdns_no_rule_addr=$(config_n_get @global[0] smartdns_no_rule_addr $(config_n_get @global_optimize[0] smartdns_no_rule_addr 1))
+	local smartdns_serve_expired=$(config_n_get @global[0] smartdns_serve_expired $(config_n_get @global_optimize[0] smartdns_serve_expired 1))
+	local smartdns_vps_group=$(config_n_get @global[0] smartdns_vps_group $(config_n_get @global_optimize[0] smartdns_vps_group 1))
+	local smartdns_vps_dns=$(config_n_get @global[0] smartdns_vps_dns)
+	if [ -z "${smartdns_vps_dns}" ] || [ "${smartdns_vps_dns}" = "nil" ]; then
+		smartdns_vps_dns="https://223.5.5.5/dns-query|https://180.184.1.1/dns-query"
+	else
+		smartdns_vps_dns=$(echo ${smartdns_vps_dns} | tr -s ' ' '|')
+	fi
+	local vps_group=""
+	if [ "${smartdns_vps_group}" = "1" ]; then
+		vps_group="passwall_vps"
+		echolog "  - 节点列表 DNS：使用 SmartDNS 专属直连组(${vps_group})"
+	else
+		vps_group="${group_domestic:-direct}"
+		echolog "  - 节点列表 DNS：复用 SmartDNS 国内直连分组(${vps_group})"
+	fi
+
+	echolog "  - 域名解析：使用 SmartDNS 系统共享/单进程优化模式，请确保主系统 SmartDNS 正常运行。"
+	china_ng_listen="127.0.0.1#${SMARTDNS_LISTEN_PORT}"
+	if [ "${DNS_REDIRECT}" = "1" ]; then
+		echolog "  - DNS 重定向 -> SmartDNS(${china_ng_listen})，直连 DNS -> 国内分组(${group_domestic})"
+	else
+		echolog "  - SmartDNS(127.0.0.1#${SMARTDNS_LOCAL_PORT}) -> 节点/国内分组，SmartDNS(${china_ng_listen}) -> Dnsmasq"
+	fi
+	china_ng_listen="${china_ng_listen},::1#${SMARTDNS_LISTEN_PORT}"
+
+	local smartdns_conf="/tmp/etc/smartdns/${CONFIG}.conf"
+	lua "$APP_PATH/helper_smartdns_add_optimize.lua" -FLAG "default" -SMARTDNS_CONF "${smartdns_conf}" \
+		-LISTEN_PORT "${SMARTDNS_LISTEN_PORT}" -LOCAL_PORT "${SMARTDNS_LOCAL_PORT}" -DNS_REDIRECT "${DNS_REDIRECT}" \
+		-LOCAL_GROUP "${group_domestic}" -VPS_GROUP "${vps_group}" -VPS_DNS "${smartdns_vps_dns}" -REMOTE_GROUP "passwall_proxy" \
+		-LOCAL_DNS "${china_ng_local_dns}" \
+		-REMOTE_PROXY_SERVER "${GLOBAL_SOCKS_server}" -USE_DEFAULT_DNS "${smartdns_default_dns}" \
+		-REMOTE_DNS "${smartdns_remote_dns}" -DNS_MODE "${DNS_MODE:-socks}" -TUN_DNS "${TUN_DNS}" \
+		-USE_DIRECT_LIST "${USE_DIRECT_LIST}" -USE_PROXY_LIST "${USE_PROXY_LIST}" -USE_BLOCK_LIST "${USE_BLOCK_LIST}" \
+		-USE_GFW_LIST "${USE_GFW_LIST}" -CHN_LIST "${CHN_LIST}" \
+		-NODE "${NODE}" -DEFAULT_PROXY_MODE "${TCP_PROXY_MODE}" -NO_PROXY_IPV6 "${FILTER_PROXY_IPV6:-0}" -NFTFLAG "${nftflag:-0}" \
+		-SUBNET "${subnet_ip:-0}" -NO_LOGIC_LOG "${NO_LOGIC_LOG:-0}" \
+		-NO_IP_ALIAS "${smartdns_no_ip_alias:-1}" -CACHE_MODE "${smartdns_cache_mode:-300}" -NO_RULE_ADDR "${smartdns_no_rule_addr:-1}" \
+		-SPLIT_SHUNT "${smartdns_split_shunt:-0}" -SERVE_EXPIRED "${smartdns_serve_expired:-1}" || {
+		echolog "  * SmartDNS 配置生成失败！"
+		return 1
+	}
+
+	local custom_conf="/etc/smartdns/custom.conf"
+	if [ -f "$custom_conf" ]; then
+		grep -q "${smartdns_conf}" "$custom_conf" || echo "conf-file ${smartdns_conf}" >> "$custom_conf"
+	fi
+	rm -rf /tmp/smartdns.cache
+	/etc/init.d/smartdns reload >/dev/null 2>&1
+
+	USE_DEFAULT_DNS="chinadns_ng"
+}
+
+del_smartdns_shared_conf() {
+	command -v smartdns >/dev/null 2>&1 || return
+	rm -rf "/tmp/etc/smartdns/${CONFIG}.conf"
+	local custom_conf="/etc/smartdns/custom.conf"
+	if [ -f "$custom_conf" ] && grep -q "${CONFIG}" "$custom_conf"; then
+		sed -i "/${CONFIG}/d" "$custom_conf" >/dev/null 2>&1
+		rm -rf /tmp/smartdns.cache
+		/etc/init.d/smartdns reload >/dev/null 2>&1
+	fi
 }
 
 get_local_dns
