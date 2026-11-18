@@ -83,10 +83,11 @@ jobs:
           fi
 
           if ! eval "$REBASE_CMD"; then
-            echo "::error::Rebase conflict detected on rolling branch. Aborting to keep rolling branch intact."
+            echo "::warning title=Rolling Rebase Deferred::Rebase conflict detected on rolling branch. Aborting rebase to keep rolling branch intact; awaiting manual resolution."
             git diff
             git rebase --abort
-            exit 1
+            echo "rebased=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "Rebase completed cleanly."
@@ -97,11 +98,14 @@ jobs:
         if: steps.rebase.outputs.rebased == 'true'
         run: |
           echo "Executing quality gate checks on rebased rolling branch..."
+          GATE_FAILED=false
           # 1. Shell script syntax verification
           for f in $(git ls-files "*.sh"); do
-            bash -n "$f" || { echo "::error::Shell syntax validation failed on $f"; exit 1; }
+            if ! bash -n "$f"; then
+              echo "::warning title=Quality Gate::Shell syntax validation failed on $f"
+              GATE_FAILED=true
+            fi
           done
-          echo "Shell syntax check: PASSED"
 
           # 2. Lua script syntax parsing
           python3 -c "
@@ -110,15 +114,23 @@ jobs:
           for f in files:
               with open(f, 'r', encoding='utf-8', errors='replace') as fp:
                   text = fp.read()
-          "
-          echo "Lua syntax sanity check: PASSED"
+          " || { echo "::warning title=Quality Gate::Lua syntax sanity check failed"; GATE_FAILED=true; }
 
           # 3. Assert downstream core features existence
           for sig in "psw_custom" "smartdns-shared" "get_node_fingerprint"; do
-            grep -rq "$sig" luci-app-passwall/ || { echo "::error::Missing custom feature signature: $sig"; exit 1; }
+            if ! grep -rq "$sig" luci-app-passwall/; then
+              echo "::warning title=Quality Gate::Missing custom feature signature: $sig"
+              GATE_FAILED=true
+            fi
           done
-          echo "Custom feature signatures: PASSED"
 
+          if [ "$GATE_FAILED" = "true" ]; then
+            echo "::warning::Quality gate checks failed. Aborting push to protect rolling branch."
+            echo "gate_passed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Quality gate: PASSED"
           echo "Pushing rolling branch..."
           git push origin rolling --force-with-lease
           echo "gate_passed=true" >> "$GITHUB_OUTPUT"
