@@ -603,6 +603,19 @@ local function parse_host_port(host_port, default_port)
 	return address or authority, (port and port ~= "") and port or default_port
 end
 
+local function parse_raw_http_list(value)
+	if not value or value == "" then return nil end
+	-- v2rayN shares RAW HTTP Host and Path lists as comma-separated strings.
+	local items = type(value) == "string" and split(value, ",") or value
+	if type(items) ~= "table" then return nil end
+	local values = {}
+	for _, item in ipairs(items) do
+		item = api.trim(item)
+		if item ~= "" then values[#values + 1] = item end
+	end
+	return #values > 0 and values or nil
+end
+
 -- 处理数据
 local function processData(szType, content, add_mode, group, sub_cfg)
 	--log(2, content, add_mode, group)
@@ -785,8 +798,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 				info.type = "none"
 			end
 			result.tcp_guise = info.type
-			result.tcp_guise_http_host = (info.host and info.host ~= "") and { info.host } or nil
-			result.tcp_guise_http_path = (info.path and info.path ~= "") and { info.path } or nil
+			if result.tcp_guise == "http" then
+				result.tcp_guise_http_host = parse_raw_http_list(info.host)
+				result.tcp_guise_http_path = parse_raw_http_list(info.path)
+			end
 		end
 		if info.net == 'kcp' or info.net == 'mkcp' then
 			info.net = "mkcp"
@@ -1018,8 +1033,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 					end
 					if params.type == 'raw' or params.type == 'tcp' then
 						result.tcp_guise = params.headerType or "none"
-						result.tcp_guise_http_host = (params.host and params.host ~= "") and { params.host } or nil
-						result.tcp_guise_http_path = (params.path and params.path ~= "") and { params.path } or nil
+						if result.tcp_guise == "http" then
+							result.tcp_guise_http_host = parse_raw_http_list(params.host)
+							result.tcp_guise_http_path = parse_raw_http_list(params.path)
+						end
 					end
 					if params.type == 'kcp' or params.type == 'mkcp' then
 						result.transport = "mkcp"
@@ -1218,8 +1235,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			end
 			if params.type == 'raw' or params.type == 'tcp' then
 				result.tcp_guise = params.headerType or "none"
-				result.tcp_guise_http_host = (params.host and params.host ~= "") and { params.host } or nil
-				result.tcp_guise_http_path = (params.path and params.path ~= "") and { params.path } or nil
+				if result.tcp_guise == "http" then
+					result.tcp_guise_http_host = parse_raw_http_list(params.host)
+					result.tcp_guise_http_path = parse_raw_http_list(params.path)
+				end
 			end
 			if params.type == 'kcp' or params.type == 'mkcp' then
 				result.transport = "mkcp"
@@ -1333,8 +1352,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			end
 			if params.type == 'raw' or params.type == 'tcp' then
 				result.tcp_guise = params.headerType or "none"
-				result.tcp_guise_http_host = (params.host and params.host ~= "") and { params.host } or nil
-				result.tcp_guise_http_path = (params.path and params.path ~= "") and { params.path } or nil
+				if result.tcp_guise == "http" then
+					result.tcp_guise_http_host = parse_raw_http_list(params.host)
+					result.tcp_guise_http_path = parse_raw_http_list(params.path)
+				end
 			end
 			if params.type == 'kcp' or params.type == 'mkcp' then
 				result.transport = "mkcp"
